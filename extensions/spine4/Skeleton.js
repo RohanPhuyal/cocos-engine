@@ -282,8 +282,18 @@ sp4.Skeleton = cc.Class({
             type: [cc.String],
             notify () {
                 let maxSkins = Math.min(4, this._getAvailableSkinCount());
-                if (this.activeSkins.length > maxSkins) {
-                    this.activeSkins = this.activeSkins.slice(0, maxSkins);
+                let normalizedSkins = this._normalizeActiveSkins(this.activeSkins, maxSkins, true);
+                let hasChanges = normalizedSkins.length !== this.activeSkins.length;
+                if (!hasChanges) {
+                    for (let i = 0; i < normalizedSkins.length; i++) {
+                        if (normalizedSkins[i] !== this.activeSkins[i]) {
+                            hasChanges = true;
+                            break;
+                        }
+                    }
+                }
+                if (hasChanges) {
+                    this.activeSkins = normalizedSkins;
                     return;
                 }
                 if (this.enableMultipleSkins) {
@@ -291,7 +301,7 @@ sp4.Skeleton = cc.Class({
                 }
             },
             visible () {
-                return this.enableMultipleSkins;
+                return false;
             },
             tooltip: 'Skin names to merge when multiple skins are enabled. Supports up to 4 skins.'
         },
@@ -1061,7 +1071,7 @@ sp4.Skeleton = cc.Class({
      */
     setSkins (skinNames) {
         let maxSkins = Math.min(4, this._getAvailableSkinCount());
-        let nextSkins = Array.isArray(skinNames) ? skinNames.slice(0, maxSkins) : [];
+        let nextSkins = this._normalizeActiveSkins(skinNames, maxSkins, true);
         this.activeSkins = nextSkins;
         this.activeSkinsCount = Math.max(1, Math.min(maxSkins, nextSkins.length || this.activeSkinsCount || 1));
         this.enableMultipleSkins = nextSkins.length > 1;
@@ -1121,11 +1131,38 @@ sp4.Skeleton = cc.Class({
 
     _resizeActiveSkins () {
         let limit = Math.max(1, Math.min(4, this._getAvailableSkinCount(), this.activeSkinsCount || 1));
-        let activeSkins = (this.activeSkins || []).slice(0, limit);
+        let activeSkins = this._normalizeActiveSkins(this.activeSkins, limit, false);
         while (activeSkins.length < limit) {
             activeSkins.push('');
         }
         this.activeSkins = activeSkins;
+    },
+
+    _normalizeActiveSkins (skinNames, maxSkins, warnOnDuplicate) {
+        let limit = Math.max(1, Math.min(4, maxSkins || this._getAvailableSkinCount()));
+        let nextSkins = Array.isArray(skinNames) ? skinNames.slice(0, limit) : [];
+        let seen = Object.create(null);
+        let hasDuplicate = false;
+
+        for (let i = 0; i < nextSkins.length; i++) {
+            let skinName = nextSkins[i];
+            if (!skinName) {
+                continue;
+            }
+
+            if (seen[skinName]) {
+                hasDuplicate = true;
+                nextSkins[i] = '';
+                continue;
+            }
+            seen[skinName] = true;
+        }
+
+        if (warnOnDuplicate && hasDuplicate) {
+            cc.warn('Duplicate active skins are not allowed. Please choose different skins.');
+        }
+
+        return nextSkins;
     },
 
     /**
@@ -1517,7 +1554,17 @@ sp4.Skeleton = cc.Class({
         }
 
         let activeSkins = (this.activeSkins || []).slice();
-        activeSkins[index] = value === 0 ? '' : (skinsEnum[value] || '');
+        let skinName = value === 0 ? '' : (skinsEnum[value] || '');
+        if (skinName) {
+            for (let i = 0; i < activeSkins.length; i++) {
+                if (i !== index && activeSkins[i] === skinName) {
+                    cc.warn('Duplicate active skins are not allowed. Please choose different skins.');
+                    return;
+                }
+            }
+        }
+
+        activeSkins[index] = skinName;
         this.activeSkins = activeSkins;
 
         if (this.enableMultipleSkins) {
