@@ -61,6 +61,7 @@ let _useTint;
 let _debugSlots;
 let _debugBones;
 let _debugMesh;
+let _debugMeshHull;
 let _nodeR,
     _nodeG,
     _nodeB,
@@ -198,7 +199,13 @@ export default class SpineAssembler extends Assembler {
         if (comp.isAnimationCached()) return;
         let skeleton = comp._skeleton;
         if (skeleton) {
-            skeleton.updateWorldTransform(spine.Physics.update);
+            let physicsMode = spine.Physics.update;
+            if (CC_EDITOR && !cc.engine.isPlaying) {
+                // Physics.reset zeroes all accumulated physics offsets (jiggle/spring constraints)
+                // so bones render at their clean animation pose without simulation drift.
+                physicsMode = spine.Physics.reset;
+            }
+            skeleton.updateWorldTransform(physicsMode);
         }
     }
 
@@ -356,7 +363,8 @@ export default class SpineAssembler extends Assembler {
         _debugSlots = _comp.debugSlots;
         _debugBones = _comp.debugBones;
         _debugMesh = _comp.debugMesh;
-        if (graphics && (_debugBones || _debugSlots || _debugMesh)) {
+        _debugMeshHull = _comp.debugMeshHull;
+        if (graphics && (_debugBones || _debugSlots || _debugMesh || _debugMeshHull)) {
             graphics.clear();
             graphics.lineWidth = 2;
         }
@@ -374,6 +382,16 @@ export default class SpineAssembler extends Assembler {
             slot = locSkeleton.drawOrder[slotIdx];
 
             if(slot == undefined) {
+                continue;
+            }
+
+            if (slot.color && slot.color.a <= 0) {
+                clipper.clipEndWithSlot(slot);
+                continue;
+            }
+
+            if (!slot.bone || !slot.bone.active) {
+                clipper.clipEndWithSlot(slot);
                 continue;
             }
 
@@ -479,7 +497,7 @@ export default class SpineAssembler extends Assembler {
                 // compute vertex and fill x y
                 attachment.computeWorldVertices(slot, 0, attachment.worldVerticesLength, vbuf, _vertexFloatOffset, _perVertexSize);
 
-                // draw debug mesh if enabled graphics
+                // draw debug mesh triangles if enabled
                 if (graphics && _debugMesh) {
                     graphics.strokeColor = _meshColor;
 
@@ -491,6 +509,22 @@ export default class SpineAssembler extends Assembler {
                         graphics.moveTo(vbuf[v1], vbuf[v1 + 1]);
                         graphics.lineTo(vbuf[v2], vbuf[v2 + 1]);
                         graphics.lineTo(vbuf[v3], vbuf[v3 + 1]);
+                        graphics.close();
+                        graphics.stroke();
+                    }
+                }
+
+                // draw debug mesh hull (outer boundary) if enabled — matches SpineViewer DebugMeshHulls
+                if (graphics && _debugMeshHull) {
+                    let hullLength = attachment.hullLength; // number of hull vertices * 2 (x,y pairs)
+                    if (hullLength >= 4) {
+                        graphics.strokeColor = _slotColor;
+                        let base = _vertexFloatOffset;
+                        graphics.moveTo(vbuf[base], vbuf[base + 1]);
+                        for (let ii = 1, nn = hullLength >> 1; ii < nn; ii++) {
+                            let off = base + ii * _perVertexSize;
+                            graphics.lineTo(vbuf[off], vbuf[off + 1]);
+                        }
                         graphics.close();
                         graphics.stroke();
                     }
@@ -550,27 +584,31 @@ export default class SpineAssembler extends Assembler {
         clipper.clipEnd();
     
         if (graphics && _debugBones) {
-            let bone;
-            graphics.strokeColor = _boneColor;
-            graphics.fillColor = _slotColor; // Root bone color is same as slot color.
-    
-            for (let i = 0, n = locSkeleton.bones.length; i < n; i++) {
-                bone = locSkeleton.bones[i];
-                let x = bone.data.length * bone.a + bone.worldX;
-                let y = bone.data.length * bone.c + bone.worldY;
-    
-                // Bone lengths.
+            // Only draw bones that belong to active, visible slots — matches SpineViewer DebugBones behaviour.
+            // Iterating drawOrder (not locSkeleton.bones) avoids drawing inactive/stale bone positions.
+            let activeBones = new Set();
+            for (let i = 0, n = locSkeleton.drawOrder.length; i < n; i++) {
+                let s = locSkeleton.drawOrder[i];
+                if (!s || !s.bone || !s.bone.active) continue;
+                if (s.color && s.color.a <= 0) continue;
+                activeBones.add(s.bone);
+            }
+
+            // Draw bone lines (red) first, then dots (green) on top — same draw order as SpineViewer
+            graphics.strokeColor = _boneColor; // red
+            activeBones.forEach(bone => {
+                let x = bone.worldX + bone.data.length * bone.a;
+                let y = bone.worldY + bone.data.length * bone.c;
                 graphics.moveTo(bone.worldX, bone.worldY);
                 graphics.lineTo(x, y);
                 graphics.stroke();
-    
-                // Bone origins.
+            });
+
+            graphics.fillColor = _originColor; // green
+            activeBones.forEach(bone => {
                 graphics.circle(bone.worldX, bone.worldY, Math.PI * 1.5);
                 graphics.fill();
-                if (i === 0) {
-                    graphics.fillColor = _originColor;
-                }
-            }
+            });
         }
     }
 

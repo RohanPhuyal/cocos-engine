@@ -380,6 +380,21 @@ sp4.Skeleton = cc.Class({
         },
 
         /**
+         * !#en Indicates whether open debug mesh hull (outer boundary of mesh attachments).
+         * !#zh 是否显示 mesh 的外轮廓 debug 信息。
+         * @property {Boolean} debugMeshHull
+         * @default false
+         */
+        debugMeshHull: {
+            default: false,
+            editorOnly: true,
+            tooltip: CC_DEV && 'i18n:COMPONENT.skeleton.debug_mesh_hull',
+            notify () {
+                this._updateDebugDraw();
+            }
+        },
+
+        /**
          * !#en Enabled two color tint.
          * !#zh 是否启用染色效果。
          * @property {Boolean} useTint
@@ -529,16 +544,6 @@ sp4.Skeleton = cc.Class({
     setSkeletonData (skeletonData) {
         if (skeletonData.width != null && skeletonData.height != null) {
             this.node.setContentSize(skeletonData.width, skeletonData.height);
-            // Set anchor so the skeleton's (0,0) origin maps to the correct
-            // position within the bounding rect, rather than defaulting to
-            // center (0.5, 0.5) which leaves ~40-50% of the box empty for
-            // characters whose root bone sits near the bottom of their bounds.
-            if (skeletonData.x != null && skeletonData.y != null &&
-                skeletonData.width > 0 && skeletonData.height > 0) {
-                let ax = -skeletonData.x / skeletonData.width;
-                let ay = -skeletonData.y / skeletonData.height;
-                this.node.setAnchorPoint(ax, ay);
-            }
         }
 
         if (!CC_EDITOR) {
@@ -750,11 +755,11 @@ sp4.Skeleton = cc.Class({
         let skeleton = this._skeleton;
         let state = this._state;
         if (skeleton) {
-            skeleton.update(dt);
             if (state) {
                 state.update(dt);
                 state.apply(skeleton);
             }
+            skeleton.update(dt);
         }
     },
 
@@ -1037,6 +1042,9 @@ sp4.Skeleton = cc.Class({
                 }
                 var res = this._state.setAnimationWith(trackIndex, animation, loop);
                 this._state.apply(this._skeleton);
+                this._skeleton.update(0);
+                let physicsMode = (CC_EDITOR && !cc.engine.isPlaying) ? spine.Physics.reset : spine.Physics.update;
+                this._skeleton.updateWorldTransform(physicsMode);
                 return res;
             }
         }
@@ -1373,7 +1381,7 @@ sp4.Skeleton = cc.Class({
     },
 
     _updateDebugDraw: function () {
-        if (this.debugBones || this.debugSlots) {
+        if (this.debugBones || this.debugSlots || this.debugMesh || this.debugMeshHull) {
             if (!this._debugRenderer) {
                 let debugDrawNode = new cc.PrivateNode();
                 debugDrawNode.name = 'DEBUG_DRAW_NODE';
@@ -1386,7 +1394,7 @@ sp4.Skeleton = cc.Class({
 
             this._debugRenderer.node.parent = this.node;
             if (this.isAnimationCached()) {
-                cc.warn("Debug bones or slots is invalid in cached mode");
+                cc.warn("Debug bones, slots, mesh or mesh hull is invalid in cached mode");
             }
         }
         else if (this._debugRenderer) {

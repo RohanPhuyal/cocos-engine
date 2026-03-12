@@ -297,27 +297,47 @@ let SkeletonData = cc.Class({
 
     // PRIVATE
 
-    _getTexture: function (line) {
+    _getTexture: function (line, allowSingleFallback) {
         let normalize = function (value) {
-            return (value || '').trim().replace(/\\/g, '/');
+            return (value || '').trim().replace(/\\/g, '/').toLowerCase();
         };
+        let getBase = function (value) {
+            let normalized = normalize(value);
+            return normalized && normalized.split('/').pop();
+        };
+        let stripExt = function (value) {
+            return (value || '').replace(/\.[^/.]+$/, '');
+        };
+
         let target = normalize(line);
-        let targetBase = target && target.split('/').pop();
-        let names = this.textureNames;
+        let targetBase = getBase(line);
+        let targetNoExt = stripExt(target);
+        let targetBaseNoExt = stripExt(targetBase);
+
+        let names = this.textureNames || [];
+        let textures = this.textures || [];
         for (let i = 0; i < names.length; i++) {
             let current = normalize(names[i]);
-            let currentBase = current && current.split('/').pop();
-            if (current === target || (currentBase && currentBase === targetBase)) {
-                let texture = this.textures[i];
+            let currentBase = getBase(names[i]);
+            let currentNoExt = stripExt(current);
+            let currentBaseNoExt = stripExt(currentBase);
+
+            let matched = current === target ||
+                currentBase === targetBase ||
+                currentNoExt === targetNoExt ||
+                currentBaseNoExt === targetBaseNoExt;
+
+            if (matched && textures[i]) {
+                let texture = textures[i];
                 let tex = new sp4.SkeletonTexture({ width: texture.width, height: texture.height });
                 tex.setRealTexture(texture);
                 return tex;
             }
         }
 
-        // Fallback for atlases with inconsistent page names: use first assigned texture.
-        if (this.textures && this.textures.length > 0 && this.textures[0]) {
-            let texture = this.textures[0];
+        // Optional fallback only when atlas is single-page and only one texture is assigned.
+        if (allowSingleFallback && textures.length === 1 && textures[0]) {
+            let texture = textures[0];
             let tex = new sp4.SkeletonTexture({ width: texture.width, height: texture.height });
             tex.setRealTexture(texture);
             return tex;
@@ -349,9 +369,10 @@ let SkeletonData = cc.Class({
         // accepts a loader callback like Spine3 did. Textures must be assigned
         // per-page after construction.
         let atlas = new sp4.spine.TextureAtlas(this.atlasText);
+        let singlePageAtlas = atlas.pages.length === 1;
         for (let i = 0; i < atlas.pages.length; i++) {
             let page = atlas.pages[i];
-            let tex = this._getTexture(page.name);
+            let tex = this._getTexture(page.name, singlePageAtlas);
             if (tex) {
                 page.setTexture(tex);
             }
