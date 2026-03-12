@@ -529,6 +529,16 @@ sp4.Skeleton = cc.Class({
     setSkeletonData (skeletonData) {
         if (skeletonData.width != null && skeletonData.height != null) {
             this.node.setContentSize(skeletonData.width, skeletonData.height);
+            // Set anchor so the skeleton's (0,0) origin maps to the correct
+            // position within the bounding rect, rather than defaulting to
+            // center (0.5, 0.5) which leaves ~40-50% of the box empty for
+            // characters whose root bone sits near the bottom of their bounds.
+            if (skeletonData.x != null && skeletonData.y != null &&
+                skeletonData.width > 0 && skeletonData.height > 0) {
+                let ax = -skeletonData.x / skeletonData.width;
+                let ay = -skeletonData.y / skeletonData.height;
+                this.node.setAnchorPoint(ax, ay);
+            }
         }
 
         if (!CC_EDITOR) {
@@ -1336,7 +1346,19 @@ sp4.Skeleton = cc.Class({
         catch (e) {
             cc.warn(e);
         }
-        
+
+        // Auto-detect premultiplied alpha from atlas page PMA flag.
+        // Spine atlases can declare pma:true which means RGB is already
+        // multiplied by alpha; the GPU blend must use ONE not SRC_ALPHA.
+        let _atlas = this.skeletonData && this.skeletonData._atlasCache;
+        if (_atlas && _atlas.pages && _atlas.pages.length > 0) {
+            let _hasPma = _atlas.pages.some(function(p) { return !!p.pma; });
+            if (this.premultipliedAlpha !== _hasPma) {
+                this.premultipliedAlpha = _hasPma;
+                this._materialCache = {};
+            }
+        }
+
         this.attachUtil.init(this);
         this.attachUtil._associateAttachedNode();
         this._preCacheMode = this._cacheMode;
