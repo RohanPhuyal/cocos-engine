@@ -254,8 +254,24 @@ export default class SpineAssembler extends Assembler {
                 }
             }
         } else {
-            let uvs = vbuf.subarray(_vertexFloatOffset + 2);
-            clipper.clipTriangles(vbuf.subarray(_vertexFloatOffset), _vertexFloatCount, ibuf.subarray(_indexOffset), _indexCount, uvs, _finalColor, _darkColor, _useTint, _perVertexSize);
+            let clipVertexCount = _vertexFloatCount / _perVertexSize;
+            let clipWorldVertices = new Float32Array(clipVertexCount * 2);
+            let clipUvs = new Float32Array(clipVertexCount * 2);
+            for (let i = 0, v = _vertexFloatOffset, u = 0; i < clipVertexCount; i++, v += _perVertexSize, u += 2) {
+                clipWorldVertices[u] = vbuf[v];
+                clipWorldVertices[u + 1] = vbuf[v + 1];
+                clipUvs[u] = vbuf[v + 2];
+                clipUvs[u + 1] = vbuf[v + 3];
+            }
+            clipper.clipTriangles(
+                clipWorldVertices,
+                ibuf.subarray(_indexOffset, _indexOffset + _indexCount),
+                _indexCount,
+                clipUvs,
+                _finalColor,
+                _darkColor,
+                _useTint
+            );
             let clippedVertices = new Float32Array(clipper.clippedVertices);
             let clippedTriangles = clipper.clippedTriangles;
             

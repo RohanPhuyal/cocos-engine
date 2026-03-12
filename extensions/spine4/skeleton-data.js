@@ -345,7 +345,18 @@ let SkeletonData = cc.Class({
             return null;
         }
 
-        return this._atlasCache = new sp4.spine.TextureAtlas(this.atlasText, this._getTexture.bind(this));
+        // Spine4's TextureAtlas constructor only takes atlasText — it no longer
+        // accepts a loader callback like Spine3 did. Textures must be assigned
+        // per-page after construction.
+        let atlas = new sp4.spine.TextureAtlas(this.atlasText);
+        for (let i = 0; i < atlas.pages.length; i++) {
+            let page = atlas.pages[i];
+            let tex = this._getTexture(page.name);
+            if (tex) {
+                page.setTexture(tex);
+            }
+        }
+        return this._atlasCache = atlas;
     },
 
     destroy () {
