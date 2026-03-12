@@ -38,7 +38,9 @@ let AttachUtil = require('./AttachUtil');
  * @module sp
  */
 let DefaultSkinsEnum = cc.Enum({ 'default': -1 });
+let OptionalSkinsEnum = cc.Enum({ '<None>': 0 });
 let DefaultAnimsEnum = cc.Enum({ '<None>': 0 });
+const MAX_ACTIVE_SKINS = 4;
 
 /**
  * !#en Enum for animation cache mode type.
@@ -223,7 +225,9 @@ sp4.Skeleton = cc.Class({
                 var skinName = skinsEnum[value];
                 if (skinName !== undefined) {
                     this.defaultSkin = skinName;
-                    this.setSkin(this.defaultSkin);
+                    if (!this.enableMultipleSkins) {
+                        this._applyConfiguredSkins();
+                    }
                     if (CC_EDITOR && !cc.engine.isPlaying) {
                         this._refreshInspector();
                     }
@@ -237,6 +241,105 @@ sp4.Skeleton = cc.Class({
             animatable: false,
             displayName: "Default Skin",
             tooltip: CC_DEV && 'i18n:COMPONENT.skeleton.default_skin'
+        },
+
+        enableMultipleSkins: {
+            default: false,
+            notify () {
+                this._applyConfiguredSkins();
+                if (CC_EDITOR) {
+                    this._refreshInspector();
+                }
+            },
+            displayName: 'Have Multiple Skins',
+            tooltip: 'Enable a composite Spine skin using multiple active skins at once.'
+        },
+
+        activeSkinsCount: {
+            default: 2,
+            type: cc.Integer,
+            notify () {
+                this.activeSkinsCount = Math.max(1, Math.min(MAX_ACTIVE_SKINS, this.activeSkinsCount | 0));
+                if (this.enableMultipleSkins) {
+                    this._applyConfiguredSkins();
+                }
+                if (CC_EDITOR) {
+                    this._refreshInspector();
+                }
+            },
+            visible () {
+                return this.enableMultipleSkins;
+            },
+            displayName: 'No. of Active Skins',
+            tooltip: 'How many skin pickers are active for the composite skin.'
+        },
+
+        activeSkins: {
+            default: function () {
+                return [];
+            },
+            type: [cc.String],
+            visible: false
+        },
+
+        _activeSkinIndex0: {
+            get () {
+                return this._getActiveSkinEnumValue(0);
+            },
+            set (value) {
+                this._setActiveSkinEnumValue(0, value);
+            },
+            type: OptionalSkinsEnum,
+            visible () {
+                return this.enableMultipleSkins && this.activeSkinsCount >= 1;
+            },
+            animatable: false,
+            displayName: 'Active Skin 1'
+        },
+
+        _activeSkinIndex1: {
+            get () {
+                return this._getActiveSkinEnumValue(1);
+            },
+            set (value) {
+                this._setActiveSkinEnumValue(1, value);
+            },
+            type: OptionalSkinsEnum,
+            visible () {
+                return this.enableMultipleSkins && this.activeSkinsCount >= 2;
+            },
+            animatable: false,
+            displayName: 'Active Skin 2'
+        },
+
+        _activeSkinIndex2: {
+            get () {
+                return this._getActiveSkinEnumValue(2);
+            },
+            set (value) {
+                this._setActiveSkinEnumValue(2, value);
+            },
+            type: OptionalSkinsEnum,
+            visible () {
+                return this.enableMultipleSkins && this.activeSkinsCount >= 3;
+            },
+            animatable: false,
+            displayName: 'Active Skin 3'
+        },
+
+        _activeSkinIndex3: {
+            get () {
+                return this._getActiveSkinEnumValue(3);
+            },
+            set (value) {
+                this._setActiveSkinEnumValue(3, value);
+            },
+            type: OptionalSkinsEnum,
+            visible () {
+                return this.enableMultipleSkins && this.activeSkinsCount >= 4;
+            },
+            animatable: false,
+            displayName: 'Active Skin 4'
         },
 
         // value of 0 represents no animation
@@ -924,11 +1027,68 @@ sp4.Skeleton = cc.Class({
      * @param {String} skinName
      */
     setSkin (skinName) {
-        if (this._skeleton) {
-            this._skeleton.setSkinByName(skinName);
-            this._skeleton.setSlotsToSetupPose();
+        if (Array.isArray(skinName)) {
+            return this.setSkins(skinName);
         }
-        this.invalidAnimationCache();
+        return this._applySkinNames(skinName ? [skinName] : []);
+    },
+
+    /**
+     * !#en
+     * Sets multiple active skins at once by composing them into a single runtime skin.
+     * The inspector currently exposes up to 4 active skins and this API matches that limit.
+     * !#zh
+     * 同时设置多个激活的皮肤，并在运行时组合成一个皮肤。
+     * 检查器当前最多暴露 4 个皮肤槽位，此接口与该限制保持一致。
+     *
+     * @method setSkins
+     * @param {String[]} skinNames
+     * @return {String[]} applied skin names
+     */
+    setSkins (skinNames) {
+        let nextSkins = Array.isArray(skinNames) ? skinNames.slice(0, MAX_ACTIVE_SKINS) : [];
+        this.activeSkins = nextSkins;
+        this.activeSkinsCount = Math.max(1, nextSkins.length || this.activeSkinsCount || 1);
+        this.enableMultipleSkins = nextSkins.length > 1;
+
+        if (!this.enableMultipleSkins) {
+            this.defaultSkin = nextSkins[0] || this.defaultSkin;
+            let applied = this._applyConfiguredSkins();
+            if (CC_EDITOR && !cc.engine.isPlaying) {
+                this._refreshInspector();
+            }
+            return applied;
+        }
+
+        let applied = this._applyConfiguredSkins();
+        if (CC_EDITOR && !cc.engine.isPlaying) {
+            this._refreshInspector();
+        }
+        return applied;
+    },
+
+    /**
+     * !#en Returns the active skin names currently used for composite skin mode.
+     * !#zh 返回当前用于组合皮肤模式的激活皮肤名称列表。
+     * @method getActiveSkins
+     * @return {String[]}
+     */
+    getActiveSkins () {
+        let selected = this.activeSkins || [];
+        let result = [];
+        let used = Object.create(null);
+        let limit = Math.max(1, Math.min(MAX_ACTIVE_SKINS, this.activeSkinsCount || 1));
+
+        for (let i = 0; i < limit; i++) {
+            let skinName = selected[i];
+            if (!skinName || used[skinName]) {
+                continue;
+            }
+            used[skinName] = true;
+            result.push(skinName);
+        }
+
+        return result;
     },
 
     /**
@@ -1299,6 +1459,118 @@ sp4.Skeleton = cc.Class({
         return this._state;
     },
 
+    _getActiveSkinEnumValue (index) {
+        let skinsEnum = this.skeletonData && this.skeletonData.getSkinsEnum && this.skeletonData.getSkinsEnum(true);
+        if (!skinsEnum) {
+            return 0;
+        }
+        let activeSkins = this.activeSkins || [];
+        let skinName = activeSkins[index];
+        if (!skinName) {
+            return 0;
+        }
+        let enumValue = skinsEnum[skinName];
+        return enumValue !== undefined ? enumValue : 0;
+    },
+
+    _setActiveSkinEnumValue (index, value) {
+        let skinsEnum = this.skeletonData && this.skeletonData.getSkinsEnum && this.skeletonData.getSkinsEnum(true);
+        if (!skinsEnum) {
+            return;
+        }
+
+        let activeSkins = (this.activeSkins || []).slice();
+        activeSkins[index] = value === 0 ? '' : (skinsEnum[value] || '');
+        this.activeSkins = activeSkins;
+
+        if (this.enableMultipleSkins) {
+            this._applyConfiguredSkins();
+        }
+        if (CC_EDITOR && !cc.engine.isPlaying) {
+            this._refreshInspector();
+        }
+    },
+
+    _applyConfiguredSkins () {
+        if (this.enableMultipleSkins) {
+            let activeSkins = this.getActiveSkins();
+            if (activeSkins.length > 0) {
+                return this._applySkinNames(activeSkins);
+            }
+        }
+
+        if (this.defaultSkin) {
+            return this._applySkinNames([this.defaultSkin]);
+        }
+
+        if (this._skeleton) {
+            this._skeleton.setSkin(null);
+            this._skeleton.setSlotsToSetupPose();
+            this._refreshSkeletonPose();
+            this.invalidAnimationCache();
+        }
+
+        return [];
+    },
+
+    _applySkinNames (skinNames) {
+        if (!this._skeleton || !this._skeleton.data) {
+            return [];
+        }
+
+        let seen = Object.create(null);
+        let validNames = [];
+        let validSkins = [];
+        for (let i = 0; i < skinNames.length; i++) {
+            let skinName = skinNames[i];
+            if (!skinName || seen[skinName]) {
+                continue;
+            }
+
+            let skin = this._skeleton.data.findSkin(skinName);
+            if (!skin) {
+                cc.warn('Skin not found: ' + skinName);
+                continue;
+            }
+
+            seen[skinName] = true;
+            validNames.push(skinName);
+            validSkins.push(skin);
+        }
+
+        if (validSkins.length === 0) {
+            this._skeleton.setSkin(null);
+        } else if (validSkins.length === 1) {
+            this._skeleton.setSkin(validSkins[0]);
+        } else {
+            let compositeSkin = new spine.Skin('__cocos-combined-skin__');
+            for (let i = 0; i < validSkins.length; i++) {
+                compositeSkin.addSkin(validSkins[i]);
+            }
+            this._skeleton.setSkin(compositeSkin);
+        }
+
+        this._skeleton.setSlotsToSetupPose();
+        this._refreshSkeletonPose();
+        this.invalidAnimationCache();
+        return validNames;
+    },
+
+    _refreshSkeletonPose () {
+        if (!this._skeleton) {
+            return;
+        }
+
+        if (!this.isAnimationCached() && this._state) {
+            this._state.apply(this._skeleton);
+            this._skeleton.update(0);
+        }
+
+        let physicsMode = (CC_EDITOR && !cc.engine.isPlaying) ? spine.Physics.reset : spine.Physics.update;
+        this._skeleton.updateWorldTransform(physicsMode);
+        this.markForRender(true);
+    },
+
     // update animation list for editor
     _updateAnimEnum: CC_EDITOR && function () {
         var animEnum;
@@ -1316,6 +1588,16 @@ sp4.Skeleton = cc.Class({
         }
         // change enum
         setEnumAttr(this, '_defaultSkinIndex', skinEnum || DefaultSkinsEnum);
+
+        var optionalSkinEnum;
+        if (this.skeletonData) {
+            optionalSkinEnum = this.skeletonData.getSkinsEnum(true);
+        }
+        optionalSkinEnum = optionalSkinEnum || OptionalSkinsEnum;
+        setEnumAttr(this, '_activeSkinIndex0', optionalSkinEnum);
+        setEnumAttr(this, '_activeSkinIndex1', optionalSkinEnum);
+        setEnumAttr(this, '_activeSkinIndex2', optionalSkinEnum);
+        setEnumAttr(this, '_activeSkinIndex3', optionalSkinEnum);
     },
 
     _ensureListener () {
@@ -1349,7 +1631,7 @@ sp4.Skeleton = cc.Class({
             if (!this.isAnimationCached()) {
                 this.setAnimationStateData(new spine.AnimationStateData(this._skeleton.data));
             }
-            this.defaultSkin && this.setSkin(this.defaultSkin);
+            this._applyConfiguredSkins();
         }
         catch (e) {
             cc.warn(e);

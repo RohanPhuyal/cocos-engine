@@ -118,6 +118,44 @@ You can use Gitpod(an online IDE which is free for Open Source) for developing t
 
 View [EngineErrorMap.md](https://github.com/cocos-creator/engine/blob/master/EngineErrorMap.md)
 All the debug infos are defined in file EngineErrorMap.md.
+
+## Spine4 Quick Use
+
+The Spine4 component in this workspace exposes the usual animation helpers plus composite skins for combining suit, hat, accessories, and other parts at runtime.
+
+```js
+const spineComp = this.node.getComponent('sp4.Skeleton');
+
+// Single skin
+spineComp.setSkin('suite/normal');
+
+// Composite skin, up to 4 entries through the inspector and API
+spineComp.setSkins([
+    'suite/normal',
+    'suite/pirate_hat',
+    'suite/accessory_glasses',
+]);
+
+// Read back the configured composite skin list
+const activeSkins = spineComp.getActiveSkins();
+
+// Animation control
+spineComp.setAnimation(0, 'idle_stage1', true);
+spineComp.addAnimation(0, 'wave', false, 0);
+spineComp.clearTrack(0);
+
+// Attachments and bones
+const headBone = spineComp.findBone('head');
+const handSlot = spineComp.findSlot('hand_r_palm');
+spineComp.setAttachment('hand_r_palm', 'hand_r_palm');
+```
+
+Inspector notes:
+
+- Use `Default Skin` for normal single-skin setups.
+- Turn on `Have Multiple Skins` to reveal composite skin controls.
+- Set `No. of Active Skins`, then choose up to 4 active skins that should be merged together.
+- Composite skins override the single default skin while the toggle is enabled.
 The file DebugInfos.json will be generated based on EngineErrorMap.md, when run `gulp build` command.
 
 For details below:

@@ -174,6 +174,7 @@ let SkeletonData = cc.Class({
         this._atlasCache = null;
         if (CC_EDITOR) {
             this._skinsEnum = null;
+            this._skinsEnumWithNone = null;
             this._animsEnum = null;
         }
     },
@@ -261,17 +262,23 @@ let SkeletonData = cc.Class({
 
     // EDITOR
 
-    getSkinsEnum: CC_EDITOR && function () {
-        if (this._skinsEnum) {
+    getSkinsEnum: CC_EDITOR && function (includeNone) {
+        if (includeNone && this._skinsEnumWithNone) {
+            return this._skinsEnumWithNone;
+        }
+        if (!includeNone && this._skinsEnum) {
             return this._skinsEnum;
         }
         let sd = this.getRuntimeData(true);
         if (sd) {
             let skins = sd.skins;
-            let enumDef = {};
+            let enumDef = includeNone ? { '<None>': 0 } : {};
             for (let i = 0; i < skins.length; i++) {
                 let name = skins[i].name;
-                enumDef[name] = i;
+                enumDef[name] = includeNone ? i + 1 : i;
+            }
+            if (includeNone) {
+                return this._skinsEnumWithNone = cc.Enum(enumDef);
             }
             return this._skinsEnum = cc.Enum(enumDef);
         }
