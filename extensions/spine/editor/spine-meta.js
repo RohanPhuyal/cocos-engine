@@ -33,11 +33,103 @@
 const Fs = require('fire-fs');
 const Path = require('fire-path');
 const Spine = require('../lib/spine');
+let Spine4Runtime = null;
+
+try {
+    Spine4Runtime = require('../../spine4/lib/spine4');
+}
+catch (e) {
+    Spine4Runtime = null;
+}
 
 const ATLAS_EXTS = ['.atlas', '.txt', '.atlas.txt', ''];
 const SPINE_ENCODING = { encoding: 'utf-8' };
 
 const CustomAssetMeta = Editor.metas['custom-asset'];
+
+function getSpineMajorVersion (json) {
+    if (json && json.skeleton && typeof json.skeleton.spine === 'string') {
+        let major = parseInt(json.skeleton.spine.split('.')[0], 10);
+        if (Number.isFinite(major)) {
+            return major;
+        }
+    }
+    return null;
+}
+
+function getRuntimeByJson (json) {
+    let major = getSpineMajorVersion(json);
+    if (major !== null && major >= 4 && Spine4Runtime) {
+        return Spine4Runtime;
+    }
+    return Spine;
+}
+
+function getSkeletonDataAssetCtorByJson (json) {
+    let major = getSpineMajorVersion(json);
+    if (major !== null && major >= 4) {
+        let _global = typeof window === 'undefined' ? global : window;
+        _global.sp4 = _global.sp4 || {};
+        if (!_global.sp4.SkeletonData) {
+            try {
+                require('../../spine4/skeleton-data.js');
+            }
+            catch (e) {
+                return null;
+            }
+        }
+        return _global.sp4.SkeletonData || null;
+    }
+    return sp.SkeletonData;
+}
+
+function normalizeTextureUuid (value) {
+    if (!value) {
+        return '';
+    }
+
+    if (typeof value === 'string') {
+        if (/^[0-9a-f-]{36}$/i.test(value)) {
+            return value;
+        }
+        return Editor.assetdb.urlToUuid(value) || '';
+    }
+
+    if (typeof value === 'object') {
+        if (typeof value._uuid === 'string' && value._uuid) {
+            return value._uuid;
+        }
+        if (typeof value.uuid === 'string' && value.uuid) {
+            return value.uuid;
+        }
+        if (typeof value.url === 'string' && value.url) {
+            return Editor.assetdb.urlToUuid(value.url) || '';
+        }
+    }
+
+    return '';
+}
+
+function guessSiblingTextureUuids (skeletonPath) {
+    const exts = ['.png', '.jpg', '.jpeg', '.webp', '.bmp'];
+    const base = Path.stripExt(skeletonPath);
+    const names = [];
+    const uuids = [];
+
+    for (let i = 0; i < exts.length; i++) {
+        let imgPath = base + exts[i];
+        if (!Fs.existsSync(imgPath)) {
+            continue;
+        }
+        let uuid = Editor.assetdb.fspathToUuid(imgPath);
+        if (uuid) {
+            uuids.push(uuid);
+            names.push(Path.basename(imgPath));
+        }
+    }
+
+    return { uuids, names };
+}
 
 function searchAtlas (skeletonPath, callback) {
     skeletonPath = Path.stripExt(skeletonPath);
@@ -77,23 +169,34 @@ function loadAtlasText (skeletonPath, callback) {
 
 // A dummy texture loader to record all textures in atlas
 class TextureParser {
-    constructor (atlasPath) {
+    constructor (atlasPath, runtime) {
         this.atlasPath = atlasPath;
+        this.runtime = runtime || Spine;
         // array of loaded texture uuid
         this.textures = [];
         // array of corresponding line
         this.textureNames = [];
     }
     load (line) {
-        var name = Path.basename(line);
+        line = (line || '').trim().replace(/\\/g, '/');
+        if (!line) {
+            return null;
+        }
         var base = Path.dirname(this.atlasPath);
-        var path = Path.resolve(base, name);
+        // Keep subfolder info if atlas line contains relative path.
+        var candidate = Path.resolve(base, line);
+        var fallback = Path.resolve(base, Path.basename(line));
+        var path = candidate;
         var uuid = Editor.assetdb.fspathToUuid(path);
+        if (!uuid && path !== fallback) {
+            path = fallback;
+            uuid = Editor.assetdb.fspathToUuid(path);
+        }
         if (uuid) {
             console.log('UUID is initialized for "%s".', path);
             this.textures.push(uuid);
             this.textureNames.push(line);
-            var tex = new Spine.Texture({});
+            var tex = new this.runtime.Texture({});
             tex.setFilters = function() {};
             tex.setWraps = function() {};
             return tex;
@@ -129,10 +232,17 @@ class SpineMeta extends CustomAssetMeta {
 
     // HACK - for inspector
     get texture () {
-        return Editor.assetdb.uuidToUrl(this.textures[0]);
+        if (!this.textures || !this.textures[0]) {
+            return '';
+        }
+        return Editor.assetdb.uuidToUrl(this.textures[0]) || '';
     }
     set texture (value) {
-        this.textures[0] = Editor.assetdb.urlToUuid(value);
+        let uuid = normalizeTextureUuid(value);
+        this.textures = uuid ? [uuid] : [];
+        if (uuid && (!this.textureNames || this.textureNames.length === 0)) {
+            this.textureNames = ['texture'];
+        }
     }
 
     static version () { return '1.2.5'; }
@@ -164,12 +274,16 @@ class SpineMeta extends CustomAssetMeta {
             catch (e) {
                 return false;
             }
-            return Array.isArray(json.bones);
+            if (!Array.isArray(json.bones)) {
+                return false;
+            }
+            // Accept Spine3 and Spine4 JSON here.
+            return true;
         }
         return false;
     }
 
-    _initTexture (asset, fspath, cb) {
+    _initTexture (asset, fspath, runtime, cb) {
         loadAtlasText(fspath, (err, res) => {
             if (err) {
                 return cb(err);
@@ -177,19 +291,42 @@ class SpineMeta extends CustomAssetMeta {
 
             var db = this._assetdb;
 
-            // parse atlas textures
-            var textureParser = new TextureParser(res.atlasPath);
+            // Parse atlas with runtime matching skeleton version.
+            var textureParser = new TextureParser(res.atlasPath, runtime);
 
             try {
-                new Spine.TextureAtlas(res.data, textureParser.load.bind(textureParser));
+                    new runtime.TextureAtlas(res.data, textureParser.load.bind(textureParser));
             }
             catch (err) {
                 return cb(new Error(`Failed to load atlas file: "${res.atlasPath}". ${err.stack || err}`));
             }
 
-            this.textures = textureParser.textures;
-            asset.textures = textureParser.textures.map(Editor.serialize.asAsset);
-            asset.textureNames = textureParser.textureNames;
+            // If atlas texture auto-discovery fails, keep manually assigned texture from inspector.
+            let textures = textureParser.textures;
+            let textureNames = textureParser.textureNames;
+            let manualTextures = (this.textures || [])
+                .map(normalizeTextureUuid)
+                .filter(Boolean);
+
+            if (textures.length === 0 && manualTextures.length > 0) {
+                textures = manualTextures;
+                // Keep at least one texture name entry so runtime lookup has a key.
+                textureNames = this.textureNames && this.textureNames.length > 0 ? this.textureNames.slice() : ['texture'];
+            }
+
+            // Last fallback: infer texture from sibling image with same basename.
+            if (textures.length === 0) {
+                let guessed = guessSiblingTextureUuids(fspath);
+                if (guessed.uuids.length > 0) {
+                    textures = guessed.uuids;
+                    textureNames = guessed.names;
+                }
+            }
+
+            this.textures = textures;
+            this.textureNames = textureNames;
+            asset.textures = textures.map(Editor.serialize.asAsset);
+            asset.textureNames = textureNames;
             asset.atlasText = res.data;
             db.saveAssetToLibrary(this.uuid, asset);
             cb();
@@ -210,12 +347,18 @@ class SpineMeta extends CustomAssetMeta {
                 return cb(e);
             }
 
-            var asset = new sp.SkeletonData();
+            var runtime = getRuntimeByJson(json);
+            var AssetCtor = getSkeletonDataAssetCtorByJson(json);
+            if (!AssetCtor) {
+                return cb(new Error('Can not resolve Spine4 SkeletonData asset class.'));
+            }
+
+            var asset = new AssetCtor();
             asset.name = Path.basenameNoExt(fspath);
             asset.skeletonJson = json;
             asset.scale = this.scale;
 
-            this._initTexture(asset, fspath, cb);
+            this._initTexture(asset, fspath, runtime, cb);
         });
     }
 
@@ -235,7 +378,7 @@ class SpineMeta extends CustomAssetMeta {
             asset._setRawAsset(extname);
             asset.scale = this.scale;
 
-            this._initTexture(asset, fspath, cb);
+            this._initTexture(asset, fspath, Spine, cb);
         });
     }
 

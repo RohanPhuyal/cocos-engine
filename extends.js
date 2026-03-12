@@ -42,6 +42,7 @@ else {
 }
 
 require('./extensions/spine');
+require('./extensions/spine4');
 require('./extensions/dragonbones');
 
 if (!CC_EDITOR || !Editor.isMainProcess) {

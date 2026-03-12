@@ -257,6 +257,16 @@
     "dependencies": ["WebGL Renderer"]
   },
   {
+    "name": "Spine4 Skeleton",
+    "entries": [
+      "./extensions/spine4/index.js"
+    ],
+    "internal/resources": [
+      "builtin-2d-spine"
+    ],
+    "dependencies": ["WebGL Renderer"]
+  },
+  {
     "name": "StudioComponent",
     "entries": [
       "./cocos2d/core/components/CCStudioComponent.js"
