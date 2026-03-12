@@ -119,43 +119,234 @@ You can use Gitpod(an online IDE which is free for Open Source) for developing t
 View [EngineErrorMap.md](https://github.com/cocos-creator/engine/blob/master/EngineErrorMap.md)
 All the debug infos are defined in file EngineErrorMap.md.
 
-## Spine4 Quick Use
+## Spine4 API Reference (sp4.Skeleton)
 
-The Spine4 component in this workspace exposes the usual animation helpers plus composite skins for combining suit, hat, accessories, and other parts at runtime.
+Use this when working with Spine4 runtime in scripts.
 
 ```js
 const spineComp = this.node.getComponent('sp4.Skeleton');
+```
 
-// Single skin
+### 1) Skin APIs
+
+#### `setSkin(skinName: string | string[])`
+- Set a single skin by name.
+- If an array is passed, it forwards to `setSkins([...])`.
+
+```js
 spineComp.setSkin('suite/normal');
+```
 
-// Composite skin, up to 4 entries through the inspector and API
-spineComp.setSkins([
+#### `setSkins(skinNames: string[])`
+- Compose multiple skins into one runtime skin.
+- Max supported active skins is **4**.
+- Returns the list of actually applied skins.
+
+```js
+const applied = spineComp.setSkins([
     'suite/normal',
     'suite/pirate_hat',
     'suite/accessory_glasses',
 ]);
+```
 
-// Read back the configured composite skin list
+#### `getActiveSkins(): string[]`
+- Returns deduplicated active skin names currently used by composite mode.
+
+```js
 const activeSkins = spineComp.getActiveSkins();
+```
 
-// Animation control
-spineComp.setAnimation(0, 'idle_stage1', true);
+### 2) Animation Control APIs
+
+#### `setAnimation(trackIndex, name, loop)`
+- Set current animation on track.
+- In realtime mode returns `TrackEntry`.
+
+```js
+const entry = spineComp.setAnimation(0, 'idle_stage1', true);
+```
+
+#### `addAnimation(trackIndex, name, loop, delay = 0)`
+- Queue animation after current/queued animations.
+- In realtime mode returns `TrackEntry`.
+
+```js
 spineComp.addAnimation(0, 'wave', false, 0);
-spineComp.clearTrack(0);
+```
 
-// Attachments and bones
+#### `setMix(fromAnimation, toAnimation, duration)`
+- Set cross-fade duration between two animations.
+
+```js
+spineComp.setMix('idle_stage1', 'run', 0.2);
+```
+
+#### `findAnimation(name)`
+- Lookup animation object by name.
+
+```js
+const anim = spineComp.findAnimation('run');
+```
+
+#### `getCurrent(trackIndex)`
+- Get current `TrackEntry` for track.
+
+```js
+const current = spineComp.getCurrent(0);
+```
+
+#### `clearTrack(trackIndex)` / `clearTracks()`
+- Clear one track or all tracks.
+
+```js
+spineComp.clearTrack(0);
+spineComp.clearTracks();
+```
+
+### 3) Listener APIs (Spine3-style)
+
+Yes, Spine4 has the same listener style as Spine3.
+
+#### Global listeners
+- `setStartListener(listener)`
+- `setInterruptListener(listener)`
+- `setEndListener(listener)`
+- `setDisposeListener(listener)`
+- `setCompleteListener(listener)`
+- `setEventListener(listener)`
+
+```js
+spineComp.setCompleteListener((entry) => {
+    cc.log('complete:', entry && entry.animation && entry.animation.name);
+});
+
+spineComp.setEventListener((entry, event) => {
+    cc.log('event:', event && event.data && event.data.name);
+});
+```
+
+#### Per-track-entry listeners
+- `setTrackStartListener(entry, listener)`
+- `setTrackInterruptListener(entry, listener)`
+- `setTrackEndListener(entry, listener)`
+- `setTrackDisposeListener(entry, listener)`
+- `setTrackCompleteListener(entry, listener)`
+- `setTrackEventListener(entry, listener)`
+
+```js
+const entry = spineComp.setAnimation(0, 'attack', false);
+if (entry) {
+    spineComp.setTrackCompleteListener(entry, (trackEntry, loopCount) => {
+        cc.log('track complete:', loopCount);
+    });
+}
+```
+
+### 4) Bone / Slot / Attachment APIs
+
+#### `findBone(boneName)`
+- Get bone by name.
+
+```js
 const headBone = spineComp.findBone('head');
+```
+
+#### `findSlot(slotName)`
+- Get slot by name.
+
+```js
 const handSlot = spineComp.findSlot('hand_r_palm');
+```
+
+#### `getAttachment(slotName, attachmentName)`
+- Get attachment from active skin/default skin.
+
+```js
+const att = spineComp.getAttachment('hand_r_palm', 'hand_r_palm');
+```
+
+#### `setAttachment(slotName, attachmentName)`
+- Set slot attachment by name.
+
+```js
 spineComp.setAttachment('hand_r_palm', 'hand_r_palm');
 ```
 
-Inspector notes:
+### 5) Pose / Transform APIs
 
-- Use `Default Skin` for normal single-skin setups.
-- Turn on `Have Multiple Skins` to reveal composite skin controls.
-- Set `No. of Active Skins`, then choose up to 4 active skins that should be merged together.
-- Composite skins override the single default skin while the toggle is enabled.
+#### `setToSetupPose()`
+- Reset bones + slots to setup pose.
+
+#### `setBonesToSetupPose()`
+- Reset only bones.
+
+#### `setSlotsToSetupPose()`
+- Reset only slots.
+
+#### `updateWorldTransform()`
+- Force world transform update.
+
+```js
+spineComp.setToSetupPose();
+spineComp.updateWorldTransform();
+```
+
+### 6) Cache Mode APIs
+
+#### `setAnimationCacheMode(mode)`
+- Set cache mode via `sp4.Skeleton.AnimationCacheMode`.
+
+```js
+spineComp.setAnimationCacheMode(sp4.Skeleton.AnimationCacheMode.REALTIME);
+// or SHARED_CACHE / PRIVATE_CACHE
+```
+
+#### `isAnimationCached()`
+- Returns whether current runtime is in cached animation mode.
+
+#### `updateAnimationCache(animName)`
+- Rebuild cache for one animation.
+
+#### `invalidAnimationCache()`
+- Mark cache invalid and rebuild on demand.
+
+```js
+if (spineComp.isAnimationCached()) {
+    spineComp.invalidAnimationCache();
+}
+```
+
+### 7) Advanced Runtime APIs
+
+#### `setAnimationStateData(stateData)`
+- Replace `AnimationState` source data.
+
+#### `setSlotsRange(startSlotIndex, endSlotIndex)`
+- Render only slots in a range (realtime mode only).
+
+#### `setVertexEffectDelegate(effectDelegate)`
+- Apply Spine vertex effects.
+
+#### `getState()`
+- Access underlying `sp4.spine.AnimationState`.
+
+```js
+const state = spineComp.getState();
+```
+
+### Inspector Notes
+
+- Use `Default Skin` for normal single-skin setup.
+- Enable `Have Multiple Skins` to compose skins.
+- `No. of Active Skins` is clamped to **1 ~ 4**.
+- `Active Skin 1..4` are the selectable composite skin slots.
+
+### Realtime vs Cached Mode (Important)
+
+- **Realtime mode**: full Spine state + `TrackEntry` workflow.
+- **Cached mode**: optimized playback path; `setAnimation`/`addAnimation` do not return normal realtime `TrackEntry` objects, so per-entry listener workflow is limited.
+- If you need exact Spine3-style per-track control/listeners, use **Realtime mode**.
 The file DebugInfos.json will be generated based on EngineErrorMap.md, when run `gulp build` command.
 
 For details below:
