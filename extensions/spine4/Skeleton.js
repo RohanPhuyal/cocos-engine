@@ -653,9 +653,29 @@ sp4.Skeleton = cc.Class({
 
     _validateRender () {
         let skeletonData = this.skeletonData;
-        if (!skeletonData || !skeletonData.isTexturesLoaded()) {
+        if (!skeletonData) {
             this.disableRender();
             return;
+        }
+        if (!skeletonData.isTexturesLoaded()) {
+            // On JSB, cc.Texture2D.loaded is often false even when the native
+            // texture is fully usable (the asset loader sets the JS flag differently).
+            // If the skeleton has already been parsed successfully (_skeletonCache set),
+            // the textures were accessible at parse time, so trust them and proceed.
+            if (CC_JSB && skeletonData._skeletonCache) {
+                if (!_global.__sp4DebugFlags.validateRenderBypassLogged) {
+                    _global.__sp4DebugFlags.validateRenderBypassLogged = true;
+                    cc.log('[sp4][jsb] _validateRender: bypassing isTexturesLoaded() — skeleton already parsed, textures trusted.');
+                }
+                // fall through to _super()
+            } else {
+                if (CC_JSB && !_global.__sp4DebugFlags.validateRenderDisabledLogged) {
+                    _global.__sp4DebugFlags.validateRenderDisabledLogged = true;
+                    cc.log('[sp4][jsb] _validateRender: textures NOT loaded, calling disableRender. skeletonCache:', !!skeletonData._skeletonCache);
+                }
+                this.disableRender();
+                return;
+            }
         }
         this._super();
     },
@@ -761,6 +781,11 @@ sp4.Skeleton = cc.Class({
     // IMPLEMENT
     __preload () {
         this._super();
+        if (CC_JSB && !_global.__sp4DebugFlags.preloadAssemblerLogged) {
+            _global.__sp4DebugFlags.preloadAssemblerLogged = true;
+            cc.log('[sp4][jsb] __preload: _assembler=', this._assembler && this._assembler.constructor && this._assembler.constructor.name, 'hasFillBuffers:', typeof (this._assembler && this._assembler.fillBuffers), 'renderFlag:', this.node._renderFlag);
+        }
+
         if (CC_EDITOR) {
             var Flags = cc.Object.Flags;
             this._objFlags |= (Flags.IsAnchorLocked | Flags.IsSizeLocked);
@@ -780,6 +805,11 @@ sp4.Skeleton = cc.Class({
         this._updateDebugDraw();
         this._updateUseTint();
         this._updateBatch();
+
+        if (CC_JSB && !_global.__sp4DebugFlags.preloadDoneLogged) {
+            _global.__sp4DebugFlags.preloadDoneLogged = true;
+            cc.log('[sp4][jsb] __preload done: renderFlag:', this.node._renderFlag, 'FLAG_RENDER:', !!(this.node._renderFlag & RenderFlow.FLAG_RENDER));
+        }
     },
 
     /**
@@ -818,6 +848,16 @@ sp4.Skeleton = cc.Class({
         if (CC_EDITOR) return;
         if (this.paused) return;
 
+        if (CC_JSB && !_global.__sp4DebugFlags.updateRenderFlagLogged) {
+            _global.__sp4DebugFlags.updateRenderFlagLogged = true;
+            cc.log('[sp4][jsb] update() frame1: renderFlag:', this.node._renderFlag,
+                'FLAG_RENDER:', !!(this.node._renderFlag & RenderFlow.FLAG_RENDER),
+                '_assemblerType:', this._assembler && this._assembler.constructor && this._assembler.constructor.name,
+                'fillBuffersType:', typeof (this._assembler && this._assembler.fillBuffers),
+                'node._renderComponent:', this.node._renderComponent && cc.js.getClassName(this.node._renderComponent),
+                'isNodeRenderCompSelf:', this.node._renderComponent === this);
+        }
+
         dt *= this.timeScale * sp4.timeScale;
 
         if (this.isAnimationCached()) {
@@ -849,6 +889,10 @@ sp4.Skeleton = cc.Class({
         } else {
             this._updateRealtime(dt);
         }
+
+        // On JSB the native renderer does not preserve FLAG_RENDER across frames
+        // for JS-only components — call markForRender every update cycle.
+        this.markForRender(true);
     },
 
     _emitCacheCompleteEvent () {
@@ -1262,6 +1306,9 @@ sp4.Skeleton = cc.Class({
      * @return {sp4.spine.TrackEntry}
      */
     setAnimation (trackIndex, name, loop) {
+        if (CC_JSB) {
+            cc.log('[sp4][jsb] setAnimation request. track:', trackIndex, 'name:', name, 'loop:', loop, 'hasSkeleton:', !!this._skeleton);
+        }
 
         this._playTimes = loop ? 0 : 1;
         this._animationName = name;
@@ -1290,6 +1337,10 @@ sp4.Skeleton = cc.Class({
             if (this._skeleton) {
                 var animation = this._skeleton.data.findAnimation(name);
                 if (!animation) {
+                    if (CC_JSB) {
+                        let names = (this._skeleton.data.animations || []).slice(0, 10).map(function (a) { return a.name; });
+                        cc.log('[sp4][jsb] setAnimation animation not found. requested:', name, 'available(first10):', names.join(','));
+                    }
                     cc.logID(7509, name);
                     return null;
                 }
@@ -1747,6 +1798,13 @@ sp4.Skeleton = cc.Class({
                 this.setAnimationStateData(new spine.AnimationStateData(this._skeleton.data));
             }
             this._applyConfiguredSkins();
+
+            if (CC_JSB && !_global.__sp4DebugFlags.skeletonSetupInfoLogged && this._skeleton) {
+                _global.__sp4DebugFlags.skeletonSetupInfoLogged = true;
+                let slots = this._skeleton.slots || [];
+                let drawOrder = this._skeleton.drawOrder || [];
+                cc.log('[sp4][jsb] skeleton setup done. slots:', slots.length, 'drawOrder:', drawOrder.length, 'defaultSkin:', this.defaultSkin || '<empty>', 'defaultAnimation:', this.defaultAnimation || '<empty>');
+            }
         }
         catch (e) {
             if (CC_JSB && !_global.__sp4DebugFlags.updateSkeletonCatchLogged) {
@@ -1805,3 +1863,569 @@ sp4.Skeleton = cc.Class({
 });
 
 module.exports = sp4.Skeleton;
+
+let nativeSpine4 = _global.spine4;
+let nativeRenderer = _global.renderer;
+let nativeMiddleware = _global.middleware;
+
+if (CC_JSB && CC_NATIVERENDERER && nativeSpine4 && nativeRenderer && nativeRenderer.CustomAssembler && nativeMiddleware) {
+    let skeletonProto = sp4.Skeleton.prototype;
+    let AnimationCacheMode = sp4.Skeleton.AnimationCacheMode;
+    let slotColor = cc.color(0, 0, 255, 255);
+    let boneColor = cc.color(255, 0, 0, 255);
+    let meshColor = cc.color(255, 255, 0, 255);
+    let originColor = cc.color(0, 255, 0, 255);
+    let materialHashMap = {};
+    let materialId = 1;
+
+    let jsUpdateMaterial = skeletonProto._updateMaterial;
+    let jsUpdateUseTint = skeletonProto._updateUseTint;
+    let jsUpdateBatch = skeletonProto._updateBatch;
+    let jsUpdateDebugDraw = skeletonProto._updateDebugDraw;
+    let jsSetSkeletonData = skeletonProto.setSkeletonData;
+    let jsUpdate = skeletonProto.update;
+    let jsApplySkinNames = skeletonProto._applySkinNames;
+    let jsOnDestroy = skeletonProto.onDestroy;
+
+    sp4.Skeleton._assembler = null;
+
+    Object.defineProperty(skeletonProto, 'paused', {
+        get () {
+            return this._paused || false;
+        },
+        set (value) {
+            this._paused = value;
+            if (this._nativeSkeleton) {
+                this._nativeSkeleton.paused(value);
+            }
+        },
+        configurable: true,
+    });
+
+    skeletonProto._resetAssembler = function () {
+        this._assembler = new nativeRenderer.CustomAssembler();
+        this.node._proxy.setAssembler(this._assembler);
+    };
+
+    skeletonProto._updateMaterial = function () {
+        jsUpdateMaterial.call(this);
+
+        if (!this._nativeSkeleton) {
+            return;
+        }
+
+        this._assembler && this._assembler.clearEffect();
+        let baseMaterial = this.getMaterial(0);
+        if (!baseMaterial) {
+            return;
+        }
+
+        let originHash = baseMaterial.effect.getHash();
+        let id = materialHashMap[originHash] || materialId++;
+        materialHashMap[originHash] = id;
+        baseMaterial.effect.updateHash(id);
+        this._nativeSkeleton.setEffect(baseMaterial.effect._nativeObj);
+    };
+
+    skeletonProto._updateUseTint = function () {
+        jsUpdateUseTint.call(this);
+        if (this._nativeSkeleton) {
+            this._nativeSkeleton.setUseTint(this.useTint);
+        }
+        this._assembler && this._assembler.clearEffect();
+    };
+
+    skeletonProto._updateBatch = function () {
+        jsUpdateBatch.call(this);
+        if (this._nativeSkeleton) {
+            this._nativeSkeleton.setBatchEnabled(this.enableBatch);
+        }
+        this._assembler && this._assembler.clearEffect();
+    };
+
+    skeletonProto._updateDebugDraw = function () {
+        jsUpdateDebugDraw.call(this);
+        if (this._nativeSkeleton && !this.isAnimationCached()) {
+            this._nativeSkeleton.setDebugMeshEnabled(this.debugMesh);
+            this._nativeSkeleton.setDebugSlotsEnabled(this.debugSlots);
+            this._nativeSkeleton.setDebugBonesEnabled(this.debugBones);
+        }
+    };
+
+    skeletonProto._updateColor = function () {
+        if (this._nativeSkeleton) {
+            this._nativeSkeleton.setColor(this.node.color);
+        }
+    };
+
+    skeletonProto.setSkeletonData = function (skeletonData) {
+        if (!skeletonData || !skeletonData._uuid) {
+            return jsSetSkeletonData.call(this, skeletonData);
+        }
+
+        if (skeletonData.width != null && skeletonData.height != null && skeletonData.width !== 0 && skeletonData.height !== 0) {
+            this.node.setContentSize(skeletonData.width, skeletonData.height);
+        }
+
+        if (this._nativeSkeleton) {
+            this._nativeSkeleton.stopSchedule();
+            this._nativeSkeleton._comp = null;
+            this._nativeSkeleton = null;
+        }
+
+        if (!this._assembler && this.node && this.node._proxy) {
+            this._resetAssembler();
+        }
+
+        let nativeSkeleton;
+        if (this.isAnimationCached()) {
+            nativeSkeleton = new nativeSpine4.SkeletonCacheAnimation(skeletonData._uuid, this._cacheMode === AnimationCacheMode.SHARED_CACHE);
+        } else {
+            nativeSkeleton = new nativeSpine4.SkeletonAnimation();
+            try {
+                nativeSpine4.initSkeletonRenderer(nativeSkeleton, skeletonData._uuid);
+            } catch (error) {
+                if (cc._throw) {
+                    cc._throw(error);
+                } else {
+                    throw error;
+                }
+                return;
+            }
+            nativeSkeleton.setDebugSlotsEnabled(this.debugSlots);
+            nativeSkeleton.setDebugMeshEnabled(this.debugMesh);
+            nativeSkeleton.setDebugBonesEnabled(this.debugBones);
+        }
+
+        this._nativeSkeleton = nativeSkeleton;
+        nativeSkeleton._comp = this;
+        nativeSkeleton.setUseTint(this.useTint);
+        nativeSkeleton.setOpacityModifyRGB(this.premultipliedAlpha);
+        nativeSkeleton.setTimeScale(this.timeScale);
+        nativeSkeleton.setBatchEnabled(this.enableBatch);
+        nativeSkeleton.bindNodeProxy(this.node._proxy);
+        nativeSkeleton.setColor(this.node.color);
+
+        this._skeleton = nativeSkeleton.getSkeleton();
+        this._rootBone = this._skeleton && this._skeleton.getRootBone ? this._skeleton.getRootBone() : null;
+        this._state = !this.isAnimationCached() && nativeSkeleton.getState ? nativeSkeleton.getState() : null;
+
+        this._startListener && this.setStartListener(this._startListener);
+        this._interruptListener && this.setInterruptListener(this._interruptListener);
+        this._endListener && this.setEndListener(this._endListener);
+        this._disposeListener && this.setDisposeListener(this._disposeListener);
+        this._completeListener && this.setCompleteListener(this._completeListener);
+        this._eventListener && this.setEventListener(this._eventListener);
+
+        if (this._stateData && !this.isAnimationCached()) {
+            nativeSkeleton.setAnimationStateData(this._stateData);
+        }
+
+        this._updateMaterial();
+        this.markForRender(true);
+    };
+
+    skeletonProto.setAnimationStateData = function (stateData) {
+        this._stateData = stateData;
+        if (this._nativeSkeleton && !this.isAnimationCached()) {
+            return this._nativeSkeleton.setAnimationStateData(stateData);
+        }
+        return null;
+    };
+
+    skeletonProto.onEnable = function () {
+        RenderComponent.prototype.onEnable.call(this);
+        if (this._nativeSkeleton) {
+            this._nativeSkeleton.onEnable();
+        }
+    };
+
+    skeletonProto.onDisable = function () {
+        RenderComponent.prototype.onDisable.call(this);
+        if (this._nativeSkeleton) {
+            this._nativeSkeleton.onDisable();
+        }
+    };
+
+    skeletonProto.setVertexEffectDelegate = function (effectDelegate) {
+        this._effectDelegate = effectDelegate;
+        if (this._nativeSkeleton && !this.isAnimationCached()) {
+            this._nativeSkeleton.setVertexEffectDelegate(effectDelegate);
+        }
+    };
+
+    skeletonProto.update = function (dt) {
+        if (!this._nativeSkeleton) {
+            return jsUpdate.call(this, dt);
+        }
+
+        let nativeSkeleton = this._nativeSkeleton;
+        let node = this.node;
+        if (!node) {
+            return;
+        }
+
+        if (!this.isAnimationCached() && (this.debugBones || this.debugSlots || this.debugMesh) && this._debugRenderer) {
+            let graphics = this._debugRenderer;
+            graphics.clear();
+            graphics.lineWidth = 2;
+            let debugData = this._debugData || nativeSkeleton.getDebugData();
+            if (!debugData) {
+                return;
+            }
+
+            let debugIdx = 0;
+            while (true) {
+                let debugType = debugData[debugIdx++];
+                if (debugType === 0) {
+                    break;
+                }
+                let debugLen = debugData[debugIdx++];
+                switch (debugType) {
+                case 1:
+                    graphics.strokeColor = slotColor;
+                    for (let i = 0; i < debugLen; i += 8) {
+                        graphics.moveTo(debugData[debugIdx++], debugData[debugIdx++]);
+                        graphics.lineTo(debugData[debugIdx++], debugData[debugIdx++]);
+                        graphics.lineTo(debugData[debugIdx++], debugData[debugIdx++]);
+                        graphics.lineTo(debugData[debugIdx++], debugData[debugIdx++]);
+                        graphics.close();
+                        graphics.stroke();
+                    }
+                    break;
+                case 2:
+                    graphics.strokeColor = meshColor;
+                    for (let i = 0; i < debugLen; i += 6) {
+                        graphics.moveTo(debugData[debugIdx++], debugData[debugIdx++]);
+                        graphics.lineTo(debugData[debugIdx++], debugData[debugIdx++]);
+                        graphics.lineTo(debugData[debugIdx++], debugData[debugIdx++]);
+                        graphics.close();
+                        graphics.stroke();
+                    }
+                    break;
+                case 3:
+                    graphics.strokeColor = boneColor;
+                    graphics.fillColor = slotColor;
+                    for (let i = 0; i < debugLen; i += 4) {
+                        let bx = debugData[debugIdx++];
+                        let by = debugData[debugIdx++];
+                        let x = debugData[debugIdx++];
+                        let y = debugData[debugIdx++];
+                        graphics.moveTo(bx, by);
+                        graphics.lineTo(x, y);
+                        graphics.stroke();
+                        graphics.circle(bx, by, Math.PI * 1.5);
+                        graphics.fill();
+                        if (i === 0) {
+                            graphics.fillColor = originColor;
+                        }
+                    }
+                    break;
+                default:
+                    return;
+                }
+            }
+        }
+    };
+
+    skeletonProto.updateWorldTransform = function () {
+        if (this._nativeSkeleton && !this.isAnimationCached()) {
+            this._nativeSkeleton.updateWorldTransform();
+        }
+    };
+
+    skeletonProto.setToSetupPose = function () {
+        if (this._nativeSkeleton) {
+            this._nativeSkeleton.setToSetupPose();
+        }
+    };
+
+    skeletonProto.setBonesToSetupPose = function () {
+        if (this._nativeSkeleton) {
+            this._nativeSkeleton.setBonesToSetupPose();
+        }
+    };
+
+    skeletonProto.setSlotsToSetupPose = function () {
+        if (this._nativeSkeleton) {
+            this._nativeSkeleton.setSlotsToSetupPose();
+        }
+    };
+
+    skeletonProto.setSlotsRange = function (startSlotIndex, endSlotIndex) {
+        if (this._nativeSkeleton && !this.isAnimationCached()) {
+            this._nativeSkeleton.setSlotsRange(startSlotIndex, endSlotIndex);
+        }
+    };
+
+    skeletonProto.updateAnimationCache = function (animName) {
+        if (!this.isAnimationCached() || !this._nativeSkeleton) {
+            return;
+        }
+
+        if (animName) {
+            this._nativeSkeleton.updateAnimationCache(animName);
+        } else {
+            this._nativeSkeleton.updateAllAnimationCache();
+        }
+    };
+
+    skeletonProto.invalidAnimationCache = function () {
+        if (this.isAnimationCached() && this._nativeSkeleton) {
+            this._nativeSkeleton.updateAllAnimationCache();
+        }
+    };
+
+    skeletonProto.findBone = function (boneName) {
+        return this._nativeSkeleton ? this._nativeSkeleton.findBone(boneName) : null;
+    };
+
+    skeletonProto.findSlot = function (slotName) {
+        return this._nativeSkeleton ? this._nativeSkeleton.findSlot(slotName) : null;
+    };
+
+    skeletonProto._applySkinNames = function (skinNames) {
+        if (!this._nativeSkeleton) {
+            return jsApplySkinNames.call(this, skinNames);
+        }
+
+        let applied = [];
+        if (Array.isArray(skinNames)) {
+            for (let i = 0; i < skinNames.length; i++) {
+                if (skinNames[i]) {
+                    applied.push(skinNames[i]);
+                }
+            }
+        }
+
+        if (applied.length > 1) {
+            cc.warn('Multiple active skins are not supported on the temporary spine4 JSB bridge. Using the first skin only.');
+            applied = [applied[0]];
+        }
+
+        this._nativeSkeleton.setSkin(applied[0] || '');
+        this._nativeSkeleton.setSlotsToSetupPose();
+        if (this._nativeSkeleton.updateWorldTransform && !this.isAnimationCached()) {
+            this._nativeSkeleton.updateWorldTransform();
+        }
+        this.invalidAnimationCache();
+        this.markForRender(true);
+        return applied;
+    };
+
+    skeletonProto.getAttachment = function (slotName, attachmentName) {
+        return this._nativeSkeleton ? this._nativeSkeleton.getAttachment(slotName, attachmentName) : null;
+    };
+
+    skeletonProto.setAttachment = function (slotName, attachmentName) {
+        if (this._nativeSkeleton) {
+            this._nativeSkeleton.setAttachment(slotName, attachmentName);
+        }
+    };
+
+    skeletonProto.setMix = function (fromAnimation, toAnimation, duration) {
+        if (this._nativeSkeleton && !this.isAnimationCached()) {
+            this._nativeSkeleton.setMix(fromAnimation, toAnimation, duration);
+        }
+    };
+
+    skeletonProto.setAnimation = function (trackIndex, name, loop) {
+        this._playTimes = loop ? 0 : 1;
+        this._animationName = name;
+
+        if (!this._nativeSkeleton) {
+            return null;
+        }
+
+        if (this.isAnimationCached()) {
+            return this._nativeSkeleton.setAnimation(name, loop);
+        }
+        return this._nativeSkeleton.setAnimation(trackIndex, name, loop);
+    };
+
+    skeletonProto.addAnimation = function (trackIndex, name, loop, delay) {
+        if (!this._nativeSkeleton) {
+            return null;
+        }
+
+        delay = delay || 0;
+        if (this.isAnimationCached()) {
+            return this._nativeSkeleton.addAnimation(name, loop, delay);
+        }
+        return this._nativeSkeleton.addAnimation(trackIndex, name, loop, delay);
+    };
+
+    skeletonProto.findAnimation = function (name) {
+        return this._nativeSkeleton ? this._nativeSkeleton.findAnimation(name) : null;
+    };
+
+    skeletonProto.getCurrent = function (trackIndex) {
+        if (this._nativeSkeleton && !this.isAnimationCached()) {
+            return this._nativeSkeleton.getCurrent(trackIndex);
+        }
+        return null;
+    };
+
+    skeletonProto.clearTracks = function () {
+        if (this._nativeSkeleton && !this.isAnimationCached()) {
+            this._nativeSkeleton.clearTracks();
+        }
+    };
+
+    skeletonProto.clearTrack = function (trackIndex) {
+        if (this._nativeSkeleton && !this.isAnimationCached()) {
+            this._nativeSkeleton.clearTrack(trackIndex);
+        }
+    };
+
+    skeletonProto.setStartListener = function (listener) {
+        this._startListener = listener;
+        if (!this._nativeSkeleton) {
+            return;
+        }
+
+        if (this.isAnimationCached()) {
+            this._nativeSkeleton.setStartListener(function (animationName) {
+                let self = this._comp;
+                self._startEntry.animation.name = animationName;
+                self._startListener && self._startListener(self._startEntry);
+            });
+        } else {
+            this._nativeSkeleton.setStartListener(listener);
+        }
+    };
+
+    skeletonProto.setInterruptListener = function (listener) {
+        this._interruptListener = listener;
+        if (this._nativeSkeleton && !this.isAnimationCached()) {
+            this._nativeSkeleton.setInterruptListener(listener);
+        }
+    };
+
+    skeletonProto.setEndListener = function (listener) {
+        this._endListener = listener;
+        if (!this._nativeSkeleton) {
+            return;
+        }
+
+        if (this.isAnimationCached()) {
+            this._nativeSkeleton.setEndListener(function (animationName) {
+                let self = this._comp;
+                self._endEntry.animation.name = animationName;
+                self._endListener && self._endListener(self._endEntry);
+            });
+        } else {
+            this._nativeSkeleton.setEndListener(listener);
+        }
+    };
+
+    skeletonProto.setDisposeListener = function (listener) {
+        this._disposeListener = listener;
+        if (this._nativeSkeleton && !this.isAnimationCached()) {
+            this._nativeSkeleton.setDisposeListener(listener);
+        }
+    };
+
+    skeletonProto.setCompleteListener = function (listener) {
+        this._completeListener = listener;
+        if (!this._nativeSkeleton) {
+            return;
+        }
+
+        if (this.isAnimationCached()) {
+            this._nativeSkeleton.setCompleteListener(function (animationName) {
+                let self = this._comp;
+                self._endEntry.animation.name = animationName;
+                self._completeListener && self._completeListener(self._endEntry);
+            });
+        } else {
+            this._nativeSkeleton.setCompleteListener(listener);
+        }
+    };
+
+    skeletonProto.setEventListener = function (listener) {
+        this._eventListener = listener;
+        if (this._nativeSkeleton && !this.isAnimationCached()) {
+            this._nativeSkeleton.setEventListener(listener);
+        }
+    };
+
+    skeletonProto.setTrackStartListener = function (entry, listener) {
+        if (this._nativeSkeleton && !this.isAnimationCached()) {
+            this._nativeSkeleton.setTrackStartListener(entry, listener);
+        }
+    };
+
+    skeletonProto.setTrackInterruptListener = function (entry, listener) {
+        if (this._nativeSkeleton && !this.isAnimationCached()) {
+            this._nativeSkeleton.setTrackInterruptListener(entry, listener);
+        }
+    };
+
+    skeletonProto.setTrackEndListener = function (entry, listener) {
+        if (this._nativeSkeleton && !this.isAnimationCached()) {
+            this._nativeSkeleton.setTrackEndListener(entry, listener);
+        }
+    };
+
+    skeletonProto.setTrackDisposeListener = function (entry, listener) {
+        if (this._nativeSkeleton && !this.isAnimationCached()) {
+            this._nativeSkeleton.setTrackDisposeListener(entry, listener);
+        }
+    };
+
+    skeletonProto.setTrackCompleteListener = function (entry, listener) {
+        if (this._nativeSkeleton && !this.isAnimationCached()) {
+            this._nativeSkeleton.setTrackCompleteListener(entry, listener);
+        }
+    };
+
+    skeletonProto.setTrackEventListener = function (entry, listener) {
+        if (this._nativeSkeleton && !this.isAnimationCached()) {
+            this._nativeSkeleton.setTrackEventListener(entry, listener);
+        }
+    };
+
+    skeletonProto.getState = function () {
+        if (this._nativeSkeleton && !this.isAnimationCached()) {
+            return this._nativeSkeleton.getState();
+        }
+        return null;
+    };
+
+    skeletonProto._updateSkeletonData = function () {
+        if (!this.skeletonData) {
+            if (this._nativeSkeleton) {
+                this._nativeSkeleton.stopSchedule();
+                this._nativeSkeleton._comp = null;
+                this._nativeSkeleton = null;
+            }
+            this.disableRender();
+            return;
+        }
+
+        let runtimeData = this.skeletonData.getRuntimeData();
+        if (!runtimeData) {
+            this.disableRender();
+            return;
+        }
+
+        this.setSkeletonData(this.skeletonData);
+        this.attachUtil.init(this);
+        this.attachUtil._associateAttachedNode();
+        this._preCacheMode = this._cacheMode;
+        this._applyConfiguredSkins();
+        this.animation = this.defaultAnimation;
+    };
+
+    skeletonProto.onDestroy = function () {
+        jsOnDestroy.call(this);
+        if (this._nativeSkeleton) {
+            this._nativeSkeleton.stopSchedule();
+            this._nativeSkeleton._comp = null;
+            this._nativeSkeleton = null;
+        }
+        this._stateData = null;
+        this._materialCache = null;
+    };
+}

@@ -77,6 +77,13 @@ _proto._color = function (node) {
 
 _proto._render = function (node) {
     let comp = node._renderComponent;
+    if (CC_JSB && comp && !_global.__sp4FlowRenderLogged) {
+        let className = cc.js.getClassName(comp);
+        if (className && className.indexOf('sp4') !== -1) {
+            _global.__sp4FlowRenderLogged = true;
+            cc.log('[sp4][jsb] RenderFlow._render entered for', className, 'node:', node.name, 'flag:', node._renderFlag, 'assembler:', comp._assembler && comp._assembler.constructor && comp._assembler.constructor.name);
+        }
+    }
     comp._checkBacth(_batcher, node._cullingMask);
     comp._assembler.fillBuffers(comp, _batcher);
     this._next._func(node);
@@ -97,9 +104,34 @@ _proto._children = function (node) {
     for (let i = 0, l = children.length; i < l; i++) {
         let c = children[i];
 
+        if (CC_JSB && !_global.__sp4ChildGateLogged && c && c._renderComponent) {
+            let className = cc.js.getClassName(c._renderComponent);
+            if (className && className.indexOf('sp4') !== -1) {
+                _global.__sp4ChildGateLogged = true;
+                cc.log('[sp4][jsb] RenderFlow._children gate check. node:', c.name,
+                    'activeInHierarchy:', c._activeInHierarchy,
+                    'opacity:', c._opacity,
+                    'renderFlag:', c._renderFlag,
+                    'class:', className);
+            }
+        }
+
         // Advance the modification of the flag to avoid node attribute modification is invalid when opacity === 0.
         c._renderFlag |= worldDirtyFlag;
-        if (!c._activeInHierarchy || c._opacity === 0) continue;
+        if (!c._activeInHierarchy || c._opacity === 0) {
+            if (CC_JSB && !_global.__sp4ChildSkippedLogged && c && c._renderComponent) {
+                let className = cc.js.getClassName(c._renderComponent);
+                if (className && className.indexOf('sp4') !== -1) {
+                    _global.__sp4ChildSkippedLogged = true;
+                    cc.log('[sp4][jsb] RenderFlow._children SKIP before flow. node:', c.name,
+                        'activeInHierarchy:', c._activeInHierarchy,
+                        'opacity:', c._opacity,
+                        'renderFlag:', c._renderFlag,
+                        'class:', className);
+                }
+            }
+            continue;
+        }
 
         _cullingMask = c._cullingMask = c.groupIndex === 0 ? cullingMask : 1 << c.groupIndex;
 

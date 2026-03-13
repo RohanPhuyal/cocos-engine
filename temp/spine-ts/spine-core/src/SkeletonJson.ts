@@ -94,6 +94,8 @@ export class SkeletonJson {
 				let parentName: string = getValue(boneMap, "parent", null);
 				if (parentName) parent = skeletonData.findBone(parentName);
 				let data = new BoneData(skeletonData.bones.length, boneMap.name, parent);
+				let inheritMode = getValue(boneMap, "inherit", null);
+				if (inheritMode == null) inheritMode = getValue(boneMap, "transform", "Normal");
 				data.length = getValue(boneMap, "length", 0) * scale;
 				data.x = getValue(boneMap, "x", 0) * scale;
 				data.y = getValue(boneMap, "y", 0) * scale;
@@ -102,7 +104,7 @@ export class SkeletonJson {
 				data.scaleY = getValue(boneMap, "scaleY", 1);
 				data.shearX = getValue(boneMap, "shearX", 0);
 				data.shearY = getValue(boneMap, "shearY", 0);
-				data.inherit = Utils.enumValue(Inherit, getValue(boneMap, "inherit", "Normal"));
+				data.inherit = Utils.enumValue(Inherit, inheritMode);
 				data.skinRequired = getValue(boneMap, "skin", false);
 
 				let color = getValue(boneMap, "color", null);

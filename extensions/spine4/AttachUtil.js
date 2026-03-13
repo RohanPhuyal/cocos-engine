@@ -427,3 +427,58 @@ let AttachUtil = cc.Class({
 });
 
 module.exports = sp4.AttachUtil = AttachUtil;
+
+let nativeGlobal = typeof window === 'undefined' ? global : window;
+let nativeSpine4 = nativeGlobal.spine4;
+
+if (CC_JSB && CC_NATIVERENDERER && nativeSpine4) {
+    let attachUtilProto = AttachUtil.prototype;
+    let jsInit = attachUtilProto.init;
+    let jsGenerateAllAttachedNodes = attachUtilProto.generateAllAttachedNodes;
+    let jsGenerateAttachedNodes = attachUtilProto.generateAttachedNodes;
+    let jsAssociateAttachedNode = attachUtilProto._associateAttachedNode;
+
+    attachUtilProto.init = function (skeletonComp) {
+        jsInit.call(this, skeletonComp);
+        this._nativeSkeleton = skeletonComp._nativeSkeleton;
+        this._attachUtilNative = null;
+    };
+
+    attachUtilProto.generateAllAttachedNodes = function () {
+        let result = jsGenerateAllAttachedNodes.call(this);
+        this._associateAttachedNode();
+        return result;
+    };
+
+    attachUtilProto.generateAttachedNodes = function (boneName) {
+        let result = jsGenerateAttachedNodes.call(this, boneName);
+        this._associateAttachedNode();
+        return result;
+    };
+
+    attachUtilProto._associateAttachedNode = function () {
+        if (!this._inited) {
+            return;
+        }
+
+        let rootNode = this._skeletonNode.getChildByName(ATTACHED_ROOT_NAME);
+        if (!rootNode || !rootNode.isValid) {
+            return;
+        }
+
+        jsAssociateAttachedNode.call(this);
+
+        if (!this._nativeSkeleton) {
+            return;
+        }
+
+        if (!this._attachUtilNative) {
+            this._attachUtilNative = this._skeletonComp.isAnimationCached()
+                ? new nativeSpine4.CacheModeAttachUtil()
+                : new nativeSpine4.RealTimeAttachUtil();
+            this._nativeSkeleton.setAttachUtil(this._attachUtilNative);
+        }
+
+        this._attachUtilNative.associateAttachedNode(this._skeleton, this._skeletonNode._proxy);
+    };
+}

@@ -266,6 +266,14 @@ let SkeletonData = cc.Class({
         reader.scale = this.scale;
         this._skeletonCache = reader.readSkeletonData(resData);
 
+        if (CC_JSB && this._skeletonCache) {
+            let skins = this._skeletonCache.skins || [];
+            let animations = this._skeletonCache.animations || [];
+            let firstSkin = skins[0] && skins[0].name;
+            let firstAnim = animations[0] && animations[0].name;
+            cc.log('[sp4][jsb] parsed skeleton data. skins:', skins.length, 'animations:', animations.length, 'firstSkin:', firstSkin, 'firstAnim:', firstAnim);
+        }
+
         return this._skeletonCache;
     },
 
@@ -435,3 +443,366 @@ let SkeletonData = cc.Class({
 });
 
 sp4.SkeletonData = module.exports = SkeletonData;
+
+let nativeSpine4 = _global.spine4;
+let nativeMiddleware = _global.middleware;
+let jsbTextureIndex = 1;
+let jsbTextureKeyMap = {};
+let jsbTextureMap = new WeakMap();
+
+function applyNativeSkeletonBounds (asset, skeletonData) {
+    if (!skeletonData) {
+        return;
+    }
+
+    if (typeof skeletonData.getWidth === 'function') {
+        asset.width = skeletonData.getWidth();
+    }
+    if (typeof skeletonData.getHeight === 'function') {
+        asset.height = skeletonData.getHeight();
+    }
+    if (typeof skeletonData.getX === 'function') {
+        asset.x = skeletonData.getX();
+    }
+    if (typeof skeletonData.getY === 'function') {
+        asset.y = skeletonData.getY();
+    }
+}
+
+function normalizeNativeTextureKey (value) {
+    return (value || '').trim().replace(/\\/g, '/');
+}
+
+function stripNativeTextureExt (value) {
+    return value.replace(/\.[^/.]+$/, '');
+}
+
+function registerNativeTextureAlias (targetMap, key, texture) {
+    if (!key || targetMap[key]) {
+        return;
+    }
+    targetMap[key] = texture;
+}
+
+function isBinarySkeletonPath (value) {
+    let normalized = normalizeNativeTextureKey(value).toLowerCase();
+    return normalized.endsWith('.skel') || normalized.endsWith('.bin');
+}
+
+function isJsonSkeletonPath (value) {
+    return normalizeNativeTextureKey(value).toLowerCase().endsWith('.json');
+}
+
+function resolveNativeSkeletonPath (path) {
+    let normalized = normalizeNativeTextureKey(path);
+    if (!normalized) {
+        return '';
+    }
+
+    if (!(_global.jsb && _global.jsb.fileUtils)) {
+        return normalized;
+    }
+
+    let fileUtils = _global.jsb.fileUtils;
+    if (typeof fileUtils.isFileExist === 'function' && fileUtils.isFileExist(normalized)) {
+        return normalized;
+    }
+
+    if (typeof fileUtils.fullPathForFilename === 'function') {
+        let fullPath = fileUtils.fullPathForFilename(normalized);
+        if (fullPath && fullPath !== normalized) {
+            if (typeof fileUtils.isFileExist !== 'function' || fileUtils.isFileExist(fullPath)) {
+                return fullPath;
+            }
+        }
+    }
+
+    return normalized;
+}
+
+function getNativeCompatibleSkeletonJsonString (skeletonJson) {
+    if (!skeletonJson) {
+        return '';
+    }
+
+    let nativeJson = skeletonJson;
+    let patched = false;
+
+    let spineVersion = skeletonJson.skeleton && skeletonJson.skeleton.spine;
+    if (typeof spineVersion === 'string' && /^4\./.test(spineVersion) && !/^4\.2(\.|$)/.test(spineVersion)) {
+        nativeJson = JSON.parse(JSON.stringify(skeletonJson));
+        if (nativeJson.skeleton) {
+            nativeJson.skeleton.spine = '4.2.00';
+            patched = true;
+        }
+    }
+
+    return {
+        text: JSON.stringify(nativeJson),
+        patched,
+        originalVersion: spineVersion || '',
+    };
+}
+
+function getNativeCompatibleJsonText (jsonText) {
+    if (!jsonText || typeof jsonText !== 'string') {
+        return {
+            text: jsonText || '',
+            patched: false,
+            originalVersion: '',
+        };
+    }
+
+    try {
+        let json = JSON.parse(jsonText);
+        if (json && json.skeleton && typeof json.skeleton.spine === 'string') {
+            let spineVersion = json.skeleton.spine;
+            if (/^4\./.test(spineVersion) && !/^4\.2(\.|$)/.test(spineVersion)) {
+                json.skeleton.spine = '4.2.00';
+                return {
+                    text: JSON.stringify(json),
+                    patched: true,
+                    originalVersion: spineVersion,
+                };
+            }
+            return {
+                text: jsonText,
+                patched: false,
+                originalVersion: spineVersion,
+            };
+        }
+    } catch (e) {
+    }
+
+    return {
+        text: jsonText,
+        patched: false,
+        originalVersion: '',
+    };
+}
+
+function addNativeTextureAliases (targetMap, rawName, texture) {
+    let normalized = normalizeNativeTextureKey(rawName);
+    if (!normalized) {
+        return;
+    }
+
+    let baseName = normalized.split('/').pop();
+    let normalizedLower = normalized.toLowerCase();
+    let baseLower = baseName.toLowerCase();
+    let noExt = stripNativeTextureExt(normalized);
+    let baseNoExt = stripNativeTextureExt(baseName);
+    let noExtLower = noExt.toLowerCase();
+    let baseNoExtLower = baseNoExt.toLowerCase();
+
+    registerNativeTextureAlias(targetMap, rawName, texture);
+    registerNativeTextureAlias(targetMap, normalized, texture);
+    registerNativeTextureAlias(targetMap, baseName, texture);
+    registerNativeTextureAlias(targetMap, normalizedLower, texture);
+    registerNativeTextureAlias(targetMap, baseLower, texture);
+    registerNativeTextureAlias(targetMap, noExt, texture);
+    registerNativeTextureAlias(targetMap, baseNoExt, texture);
+    registerNativeTextureAlias(targetMap, noExtLower, texture);
+    registerNativeTextureAlias(targetMap, baseNoExtLower, texture);
+}
+
+function collectAtlasPageNames (atlasText) {
+    let pageNames = [];
+    if (!atlasText) {
+        return pageNames;
+    }
+
+    let lines = atlasText.split(/\r?\n/);
+    for (let i = 0; i < lines.length; i++) {
+        let line = (lines[i] || '').trim();
+        if (!line || line.indexOf(':') !== -1) {
+            continue;
+        }
+
+        let next = i + 1 < lines.length ? (lines[i + 1] || '').trim() : '';
+        if (next.indexOf('size:') === 0) {
+            pageNames.push(line);
+        }
+    }
+
+    return pageNames;
+}
+
+if (CC_JSB && CC_NATIVERENDERER && nativeSpine4 && nativeMiddleware && typeof nativeSpine4.initSkeletonData === 'function') {
+    let jsGetRuntimeData = SkeletonData.prototype.getRuntimeData;
+    let jsReset = SkeletonData.prototype.reset;
+    let jsDestroy = SkeletonData.prototype.destroy;
+
+    SkeletonData.prototype.recordTexture = function (texture) {
+        let index = jsbTextureIndex++;
+        let key = jsbTextureKeyMap[index] = { key: index };
+        jsbTextureMap.set(key, texture);
+        return index;
+    };
+
+    SkeletonData.prototype.getTextureByIndex = function (textureIndex) {
+        let key = jsbTextureKeyMap[textureIndex];
+        if (!key) {
+            return null;
+        }
+        return jsbTextureMap.get(key) || null;
+    };
+
+    SkeletonData.prototype.reset = function () {
+        if (this._skeletonCache && typeof nativeSpine4.disposeSkeletonData === 'function' && this._uuid) {
+            nativeSpine4.disposeSkeletonData(this._uuid);
+        }
+        this._jsbTextures = null;
+        jsReset.call(this);
+    };
+
+    SkeletonData.prototype.destroy = function () {
+        if (this._skeletonCache && typeof nativeSpine4.disposeSkeletonData === 'function' && this._uuid) {
+            nativeSpine4.disposeSkeletonData(this._uuid);
+            this._skeletonCache = null;
+        }
+        this._jsbTextures = null;
+        jsDestroy.call(this);
+    };
+
+    SkeletonData.prototype._initNativeSkeletonData = function (quiet) {
+        if (this._skeletonCache) {
+            return this._skeletonCache;
+        }
+
+        let uuid = this._uuid;
+        if (!uuid) {
+            if (!quiet) {
+                cc.errorID(7504);
+            }
+            return null;
+        }
+
+        let retained = typeof nativeSpine4.retainSkeletonData === 'function' ? nativeSpine4.retainSkeletonData(uuid) : null;
+        if (retained) {
+            this._skeletonCache = retained;
+            applyNativeSkeletonBounds(this, retained);
+            return retained;
+        }
+
+        if (!this.atlasText) {
+            if (!quiet) {
+                cc.errorID(7508, this.name);
+            }
+            return null;
+        }
+
+        let textures = this.textures;
+        let textureNames = this.textureNames;
+        if (!(textures && textures.length > 0 && textureNames && textureNames.length > 0)) {
+            if (!quiet) {
+                cc.errorID(7507, this.name);
+            }
+            return null;
+        }
+
+        let jsbTextures = {};
+        for (let i = 0; i < textures.length; ++i) {
+            let texture = textures[i];
+            if (!texture || typeof texture.getImpl !== 'function') {
+                continue;
+            }
+
+            let textureIndex = this.recordTexture(texture);
+            let nativeTexture = new nativeMiddleware.Texture2D();
+            nativeTexture.setRealTextureIndex(textureIndex);
+            nativeTexture.setPixelsWide(texture.width);
+            nativeTexture.setPixelsHigh(texture.height);
+            nativeTexture.setTexParamCallback(function (texIdx, minFilter, magFilter, wrapS, wrapT) {
+                let realTexture = this.getTextureByIndex(texIdx);
+                if (!realTexture) {
+                    return;
+                }
+                realTexture.setFilters(minFilter, magFilter);
+                realTexture.setWrapMode(wrapS, wrapT);
+            }.bind(this));
+            nativeTexture.setNativeTexture(texture.getImpl());
+            addNativeTextureAliases(jsbTextures, textureNames[i], nativeTexture);
+            addNativeTextureAliases(jsbTextures, texture.name, nativeTexture);
+            addNativeTextureAliases(jsbTextures, texture.nativeUrl, nativeTexture);
+        }
+
+        let atlasPages = collectAtlasPageNames(this.atlasText);
+        for (let i = 0; i < atlasPages.length; i++) {
+            let texture = textures[Math.min(i, textures.length - 1)];
+            if (!texture || typeof texture.getImpl !== 'function') {
+                continue;
+            }
+
+            let pageName = atlasPages[i];
+            let textureName = textureNames[i] || textureNames[0] || pageName;
+            let pageTexture = jsbTextures[pageName] || jsbTextures[textureName];
+            if (!pageTexture) {
+                continue;
+            }
+
+            addNativeTextureAliases(jsbTextures, pageName, pageTexture);
+        }
+
+        this._jsbTextures = jsbTextures;
+
+        if (CC_JSB && !_global.__sp4DebugFlags.nativeTextureAliasLogged) {
+            _global.__sp4DebugFlags.nativeTextureAliasLogged = true;
+            cc.log('[sp4][jsb] native texture aliases keys sample:', Object.keys(jsbTextures).slice(0, 30).join(','), 'atlasPages:', collectAtlasPageNames(this.atlasText).join(','));
+        }
+
+        let nativePath = resolveNativeSkeletonPath(this.nativeUrl || '');
+
+        let filePath = '';
+        let nativeVersionPatched = false;
+        let originalSpineVersion = '';
+        if (this.skeletonJson) {
+            let nativeJson = getNativeCompatibleSkeletonJsonString(this.skeletonJson);
+            filePath = nativeJson.text || '';
+            nativeVersionPatched = !!nativeJson.patched;
+            originalSpineVersion = nativeJson.originalVersion || '';
+        } else if (isBinarySkeletonPath(nativePath)) {
+            filePath = nativePath;
+        } else if (isJsonSkeletonPath(nativePath)) {
+            if (_global.jsb && _global.jsb.fileUtils && typeof _global.jsb.fileUtils.getStringFromFile === 'function') {
+                filePath = _global.jsb.fileUtils.getStringFromFile(nativePath) || '';
+            }
+            if (!filePath && this.skeletonJsonStr) {
+                filePath = this.skeletonJsonStr;
+            }
+            let nativeJsonText = getNativeCompatibleJsonText(filePath);
+            filePath = nativeJsonText.text || filePath;
+            nativeVersionPatched = nativeVersionPatched || !!nativeJsonText.patched;
+            originalSpineVersion = originalSpineVersion || nativeJsonText.originalVersion || '';
+        } else {
+            filePath = nativePath;
+        }
+
+        if (!filePath) {
+            if (!quiet) {
+                cc.error('[sp4][jsb] Unable to resolve native skeleton init input for', this.name, 'nativePath:', nativePath);
+            }
+            return null;
+        }
+
+        if (CC_JSB && !_global.__sp4DebugFlags.nativeSkeletonInputLogged) {
+            _global.__sp4DebugFlags.nativeSkeletonInputLogged = true;
+            cc.log('[sp4][jsb] native skeleton input mode:', this.skeletonJson ? 'json-object' : (isBinarySkeletonPath(nativePath) ? 'binary-path' : (isJsonSkeletonPath(nativePath) ? 'json-file-content' : 'raw-string')), 'nativePath:', nativePath);
+            if (nativeVersionPatched) {
+                cc.log('[sp4][jsb] patched skeleton.spine version for native parse:', originalSpineVersion, '-> 4.2.00');
+            }
+        }
+
+        this._skeletonCache = nativeSpine4.initSkeletonData(uuid, filePath, this.atlasText, jsbTextures, this.scale);
+        applyNativeSkeletonBounds(this, this._skeletonCache);
+        return this._skeletonCache;
+    };
+
+    SkeletonData.prototype.getRuntimeData = function (quiet) {
+        let nativeData = this._initNativeSkeletonData(quiet);
+        if (nativeData) {
+            return nativeData;
+        }
+        return jsGetRuntimeData.call(this, quiet);
+    };
+}

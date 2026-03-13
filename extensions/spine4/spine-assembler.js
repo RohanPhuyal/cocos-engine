@@ -32,6 +32,9 @@ const VertexFormat = require('../../cocos2d/core/renderer/webgl/vertex-format')
 const VFOneColor = VertexFormat.vfmtPosUvColor;
 const VFTwoColor = VertexFormat.vfmtPosUvTwoColor;
 const gfx = cc.gfx;
+const _global = typeof window === 'undefined' ? global : window;
+
+_global.__sp4DebugFlags = _global.__sp4DebugFlags || {};
 
 const FLAG_BATCH = 0x10;
 const FLAG_TWO_COLOR = 0x01;
@@ -157,18 +160,53 @@ function _handleColor (color) {
 }
 
 function _getAttachmentTexture (attachment) {
+    let getTextureFromRegion = function (region) {
+        if (!region) {
+            return null;
+        }
+
+        let texture = region.texture || (region.page && region.page.texture);
+        if (!texture) {
+            return null;
+        }
+
+        if (typeof texture.getRealTexture === 'function') {
+            return texture.getRealTexture();
+        }
+
+        if (texture._texture) {
+            return texture._texture;
+        }
+
+        if (typeof texture.getId === 'function') {
+            return texture;
+        }
+
+        return null;
+    };
+
     if (!attachment) {
         return null;
     }
 
-    // Region attachments usually hold the render texture at region.texture._texture.
-    if (attachment.region && attachment.region.texture && attachment.region.texture._texture) {
-        return attachment.region.texture._texture;
+    let texture = getTextureFromRegion(attachment.region);
+    if (texture) {
+        return texture;
     }
 
     // Linked meshes may inherit region from parent mesh.
-    if (attachment.parentMesh && attachment.parentMesh.region && attachment.parentMesh.region.texture && attachment.parentMesh.region.texture._texture) {
-        return attachment.parentMesh.region.texture._texture;
+    if (attachment.parentMesh) {
+        texture = getTextureFromRegion(attachment.parentMesh.region);
+        if (texture) {
+            return texture;
+        }
+    }
+
+    if (attachment.rendererObject) {
+        texture = getTextureFromRegion(attachment.rendererObject);
+        if (texture) {
+            return texture;
+        }
     }
 
     return null;
@@ -187,7 +225,31 @@ function _isAttachmentType (attachment, RuntimeCtor, ctorNameFragment) {
     // object is the correct attachment type.
     let ctor = attachment.constructor;
     let ctorName = ctor && ctor.name;
-    return !!(ctorName && ctorName.indexOf(ctorNameFragment) !== -1);
+    if (ctorName && ctorName.indexOf(ctorNameFragment) !== -1) {
+        return true;
+    }
+
+    if (ctorNameFragment === 'RegionAttachment') {
+        return typeof attachment.computeWorldVertices === 'function' &&
+            !!attachment.offset &&
+            !!attachment.uvs &&
+            !attachment.triangles;
+    }
+
+    if (ctorNameFragment === 'MeshAttachment') {
+        return typeof attachment.computeWorldVertices === 'function' &&
+            !!attachment.uvs &&
+            !!attachment.triangles &&
+            attachment.worldVerticesLength != null;
+    }
+
+    if (ctorNameFragment === 'ClippingAttachment') {
+        return typeof attachment.computeWorldVertices === 'function' &&
+            attachment.endSlot !== undefined &&
+            attachment.worldVerticesLength != null;
+    }
+
+    return false;
 }
 
 function _spineColorToInt32 (spineColor) {
@@ -378,6 +440,11 @@ export default class SpineAssembler extends Assembler {
         _indexCount = 0;
         _indexOffset = 0;
 
+        if (CC_JSB && !_global.__sp4DebugFlags.realTimeTraverseLogged) {
+            _global.__sp4DebugFlags.realTimeTraverseLogged = true;
+            cc.log('[sp4][jsb] assembler realTimeTraverse start. drawOrder:', locSkeleton.drawOrder && locSkeleton.drawOrder.length, 'hasClipper:', !!clipper, 'debugRenderer:', !!graphics);
+        }
+
         for (let slotIdx = 0, slotCount = locSkeleton.drawOrder.length; slotIdx < slotCount; slotIdx++) {
             slot = locSkeleton.drawOrder[slotIdx];
 
@@ -427,12 +494,22 @@ export default class SpineAssembler extends Assembler {
             }
 
             if (!isRegion && !isMesh) {
+                if (CC_JSB && !_global.__sp4DebugFlags.unknownAttachmentLogged) {
+                    _global.__sp4DebugFlags.unknownAttachmentLogged = true;
+                    cc.log('[sp4][jsb] assembler unknown attachment type:', attachment.constructor && attachment.constructor.name, 'keys:', Object.keys(attachment).slice(0, 12).join(','));
+                }
                 clipper.clipEndWithSlot(slot);
                 continue;
             }
 
             let realTexture = _getAttachmentTexture(attachment);
             if (!realTexture) {
+                if (CC_JSB && !_global.__sp4DebugFlags.attachmentTextureMissingLogged) {
+                    _global.__sp4DebugFlags.attachmentTextureMissingLogged = true;
+                    let region = attachment.region || (attachment.parentMesh && attachment.parentMesh.region) || attachment.rendererObject;
+                    let texture = region && (region.texture || (region.page && region.page.texture));
+                    cc.log('[sp4][jsb] assembler texture miss. attachment:', attachment.constructor && attachment.constructor.name, 'region:', !!region, 'texture keys:', texture ? Object.keys(texture).slice(0, 12).join(',') : 'none');
+                }
                 clipper.clipEndWithSlot(slot);
                 continue;
             }
@@ -711,10 +788,20 @@ export default class SpineAssembler extends Assembler {
     }
 
     fillBuffers (comp, renderer) {
-        
+        if (CC_JSB && !_global.__sp4DebugFlags.fillBuffersEnteredLogged) {
+            _global.__sp4DebugFlags.fillBuffersEnteredLogged = true;
+            cc.log('[sp4][jsb] assembler fillBuffers ENTERED. skeleton:', !!comp._skeleton, 'node:', comp.node && comp.node.name);
+        }
+
         let node = comp.node;
         node._renderFlag |= RenderFlow.FLAG_UPDATE_RENDER_DATA;
-        if (!comp._skeleton) return;
+        if (!comp._skeleton) {
+            if (CC_JSB && !_global.__sp4DebugFlags.fillBuffersSkeletonNullLogged) {
+                _global.__sp4DebugFlags.fillBuffersSkeletonNullLogged = true;
+                cc.log('[sp4][jsb] assembler fillBuffers early return: _skeleton is null/undefined');
+            }
+            return;
+        }
 
         let nodeColor = node._color;
         _nodeR = nodeColor.r / 255;
@@ -728,9 +815,18 @@ export default class SpineAssembler extends Assembler {
         _perVertexSize = _useTint ? 6 : 5;
 
         _node = comp.node;
+        if (CC_JSB && !_global.__sp4DebugFlags.fillBuffersGetBufferLogged) {
+            _global.__sp4DebugFlags.fillBuffersGetBufferLogged = true;
+            cc.log('[sp4][jsb] assembler fillBuffers before getBuffer. cached:', comp.isAnimationCached(), 'useTint:', _useTint, 'hasMaterial0:', !!comp._materials[0]);
+        }
         _buffer = renderer.getBuffer('spine', _vertexFormat);
         _renderer = renderer;
         _comp = comp;
+
+        if (CC_JSB && !_global.__sp4DebugFlags.fillBuffersLogged) {
+            _global.__sp4DebugFlags.fillBuffersLogged = true;
+            cc.log('[sp4][jsb] assembler fillBuffers after getBuffer. buffer valid:', !!_buffer);
+        }
 
         _mustFlush = true;
         _premultipliedAlpha = comp.premultipliedAlpha;
@@ -763,6 +859,11 @@ export default class SpineAssembler extends Assembler {
             if (_vertexEffect) _vertexEffect.end();
         }
 
+        if (CC_JSB && !_global.__sp4DebugFlags.fillBuffersResultLogged) {
+            _global.__sp4DebugFlags.fillBuffersResultLogged = true;
+            cc.log('[sp4][jsb] assembler fillBuffers end. buffer vertexOffset:', _vertexOffset, 'indexOffset:', _indexOffset, 'materialHash:', _renderer.material && _renderer.material.getHash && _renderer.material.getHash());
+        }
+
         // sync attached node matrix
         renderer.worldMatDirty++;
         comp.attachUtil._syncAttachedNode();
@@ -781,3 +882,8 @@ export default class SpineAssembler extends Assembler {
 }
 
 Assembler.register(Skeleton, SpineAssembler);
+if (CC_JSB) {
+    cc.log('[sp4][jsb] SpineAssembler registered. Skeleton.name=', Skeleton && Skeleton.name,
+        'Skeleton.__assembler__===SpineAssembler:', Skeleton && Skeleton.__assembler__ === SpineAssembler,
+        'registeredAssemblerName:', Skeleton && Skeleton.__assembler__ && Skeleton.__assembler__.name);
+}
