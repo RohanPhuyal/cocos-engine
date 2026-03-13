@@ -359,6 +359,10 @@ let SkeletonData = cc.Class({
             return tex;
         }
 
+        if (CC_JSB && !_global.__sp4DebugFlags.textureMissLogged) {
+            _global.__sp4DebugFlags.textureMissLogged = true;
+            cc.log('[sp4][jsb] _getTexture miss for line:', line, 'textureNames:', (this.textureNames || []).join(','));
+        }
         cc.errorID(7506, line);
         return null;
     },

@@ -30,6 +30,8 @@ const spine = require('./lib/spine4');
 const Graphics = require('../../cocos2d/core/graphics/graphics');
 const RenderFlow = require('../../cocos2d/core/renderer/render-flow');
 const FLAG_POST_RENDER = RenderFlow.FLAG_POST_RENDER;
+var _global = typeof window === 'undefined' ? global : window;
+_global.__sp4DebugFlags = _global.__sp4DebugFlags || {};
 
 let SkeletonCache = require('./skeleton-cache');
 let AttachUtil = require('./AttachUtil');
@@ -1712,17 +1714,29 @@ sp4.Skeleton = cc.Class({
 
     _updateSkeletonData () {
         if (!this.skeletonData) {
+            if (CC_JSB && !_global.__sp4DebugFlags.noSkeletonDataLogged) {
+                _global.__sp4DebugFlags.noSkeletonDataLogged = true;
+                cc.log('[sp4][jsb] _updateSkeletonData: missing skeletonData asset');
+            }
             this.disableRender();
             return;
         }
 
         if (typeof this.skeletonData.getRuntimeData !== 'function') {
+            if (CC_JSB && !_global.__sp4DebugFlags.noRuntimeMethodLogged) {
+                _global.__sp4DebugFlags.noRuntimeMethodLogged = true;
+                cc.log('[sp4][jsb] _updateSkeletonData: skeletonData.getRuntimeData is not a function');
+            }
             this.disableRender();
             return;
         }
 
         let data = this.skeletonData.getRuntimeData();
         if (!data) {
+            if (CC_JSB && !_global.__sp4DebugFlags.runtimeDataNullLogged) {
+                _global.__sp4DebugFlags.runtimeDataNullLogged = true;
+                cc.log('[sp4][jsb] _updateSkeletonData: getRuntimeData returned null');
+            }
             this.disableRender();
             return;
         }
@@ -1735,7 +1749,11 @@ sp4.Skeleton = cc.Class({
             this._applyConfiguredSkins();
         }
         catch (e) {
-            cc.warn(e);
+            if (CC_JSB && !_global.__sp4DebugFlags.updateSkeletonCatchLogged) {
+                _global.__sp4DebugFlags.updateSkeletonCatchLogged = true;
+                cc.log('[sp4][jsb] _updateSkeletonData catch:', e && (e.stack || e.message) ? (e.stack || e.message) : e);
+            }
+            cc.warn(e && (e.stack || e.message) ? (e.stack || e.message) : e);
         }
 
         // Auto-detect premultiplied alpha from atlas page PMA flag.
