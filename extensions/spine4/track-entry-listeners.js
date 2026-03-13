@@ -32,6 +32,8 @@ let TrackEntryListeners = function () {
     this.dispose = null;
 };
 
+TrackEntryListeners.RUNTIME = 'spine4';
+
 TrackEntryListeners.getListeners = function(entry){
     if (!entry.listener) {
         entry.listener = new TrackEntryListeners();

@@ -29,11 +29,13 @@
 var _global = typeof window === 'undefined' ? global : window;
 _global.sp4 = _global.sp4 || {};
 var sp4 = _global.sp4;
+_global.__sp4DebugFlags = _global.__sp4DebugFlags || {};
 
-// When this file is required directly by the editor importer, index.js may not have run yet.
-if (!sp4.spine && !CC_NATIVERENDERER) {
-    _global.spine4 = _global.spine4 || require('./lib/spine4');
-    sp4.spine = _global.spine4;
+// Ensure spine4 JS runtime namespace is available even if index.js load order differs.
+// On JSB, global `spine4` may be the native helper namespace (init/dispose only),
+// which does not expose Atlas constructors needed by the JS parser path.
+if (!sp4.spine || (!sp4.spine.TextureAtlas && !sp4.spine.Atlas)) {
+    sp4.spine = require('./lib/spine4');
 }
 
 let SkeletonCache = !CC_JSB && require('./skeleton-cache').sharedCache;
@@ -226,9 +228,17 @@ let SkeletonData = cc.Class({
      * @return {sp4.spine.SkeletonData}
      */
     getRuntimeData: function (quiet) {
+        if (CC_JSB && !_global.__sp4DebugFlags.runtimeDataLogged) {
+            _global.__sp4DebugFlags.runtimeDataLogged = true;
+            cc.log('[sp4][jsb] getRuntimeData called. textures:', this.textures && this.textures.length, 'textureNames:', this.textureNames && this.textureNames.length, 'hasSkeletonJson:', !!this.skeletonJson);
+        }
         if (this._skeletonCache) {
             return this._skeletonCache;
         }
+
+        // NOTE: JSB native initSkeletonData path is currently disabled for spine4.
+        // It expects middleware::Texture2D native objects and can assert in CCMap::insert
+        // when receiving invalid texture entries from JS. Use the runtime JS parser path below.
 
         if ( !(this.textures && this.textures.length > 0) && this.textureNames && this.textureNames.length > 0 ) {
             if ( !quiet ) {
@@ -255,7 +265,6 @@ let SkeletonData = cc.Class({
 
         reader.scale = this.scale;
         this._skeletonCache = reader.readSkeletonData(resData);
-        atlas.dispose();
 
         return this._skeletonCache;
     },
@@ -375,7 +384,29 @@ let SkeletonData = cc.Class({
         // Spine4's TextureAtlas constructor only takes atlasText — it no longer
         // accepts a loader callback like Spine3 did. Textures must be assigned
         // per-page after construction.
-        let atlas = new sp4.spine.TextureAtlas(this.atlasText);
+        let AtlasCtor = sp4.spine.TextureAtlas || sp4.spine.Atlas;
+        if (!AtlasCtor) {
+            let runtimeSpine4 = require('./lib/spine4');
+            if (runtimeSpine4 && runtimeSpine4.default) {
+                runtimeSpine4 = runtimeSpine4.default;
+            }
+            if (runtimeSpine4) {
+                sp4.spine = runtimeSpine4;
+                AtlasCtor = sp4.spine.TextureAtlas || sp4.spine.Atlas;
+            }
+        }
+        if (!AtlasCtor) {
+            if (CC_JSB && !_global.__sp4DebugFlags.atlasCtorMissingLogged) {
+                _global.__sp4DebugFlags.atlasCtorMissingLogged = true;
+                cc.log('[sp4][jsb] Atlas ctor missing. spine keys sample:', sp4.spine ? Object.keys(sp4.spine).slice(0, 20) : 'no sp4.spine');
+            }
+            if (!quiet) {
+                cc.error('sp4.spine.TextureAtlas and sp4.spine.Atlas are both unavailable.');
+            }
+            return null;
+        }
+
+        let atlas = new AtlasCtor(this.atlasText);
         let singlePageAtlas = atlas.pages.length === 1;
         for (let i = 0; i < atlas.pages.length; i++) {
             let page = atlas.pages[i];
@@ -388,7 +419,13 @@ let SkeletonData = cc.Class({
     },
 
     destroy () {
-        SkeletonCache.removeSkeleton(this._uuid);
+        let nativeSpine4 = sp4.spine || _global.spine4;
+        if (CC_JSB && nativeSpine4 && typeof nativeSpine4.disposeSkeletonData === 'function') {
+            nativeSpine4.disposeSkeletonData(this._uuid);
+        }
+        else if (SkeletonCache) {
+            SkeletonCache.removeSkeleton(this._uuid);
+        }
         this._super();
     },
 });

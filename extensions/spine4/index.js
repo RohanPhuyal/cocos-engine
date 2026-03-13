@@ -128,9 +128,7 @@ if (_isUseSpine) {
     if (!CC_EDITOR || !Editor.isMainProcess) {
         
         sp4.spine = _global.spine4;
-        if (!CC_NATIVERENDERER) {
-            require('./skeleton-texture');
-        }
+        require('./skeleton-texture');
 
         require('./skeleton-data');
         require('./vertex-effect-delegate');

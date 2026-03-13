@@ -678,13 +678,15 @@ sp4.Skeleton = cc.Class({
             // Spine space, so anchorX = -x/width and anchorY = -y/height puts node origin (0,0)
             // exactly at the root bone. This fixes the bounding-box / texture offset visible
             // in the editor when a Spine 4.x asset has a non-zero viewport origin.
-            let w = skeletonData.width;
-            let h = skeletonData.height;
-            let sx = (skeletonData.x != null) ? skeletonData.x : 0;
-            let sy = (skeletonData.y != null) ? skeletonData.y : 0;
-            if (w > 0 && h > 0) {
-                this.node.anchorX = -sx / w;
-                this.node.anchorY = -sy / h;
+            if (CC_EDITOR) {
+                let w = skeletonData.width;
+                let h = skeletonData.height;
+                let sx = (skeletonData.x != null) ? skeletonData.x : 0;
+                let sy = (skeletonData.y != null) ? skeletonData.y : 0;
+                if (w > 0 && h > 0) {
+                    this.node.anchorX = -sx / w;
+                    this.node.anchorY = -sy / h;
+                }
             }
         }
 
