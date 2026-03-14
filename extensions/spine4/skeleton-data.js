@@ -520,6 +520,67 @@ function resolveNativeSkeletonPath (path) {
     return normalized;
 }
 
+function normalizeNativeInheritMode (value) {
+    if (typeof value !== 'string') {
+        return '';
+    }
+
+    let normalized = value.trim().toLowerCase();
+    if (!normalized) {
+        return '';
+    }
+
+    switch (normalized) {
+    case 'normal':
+        return 'normal';
+    case 'onlytranslation':
+        return 'onlyTranslation';
+    case 'norotationorreflection':
+        return 'noRotationOrReflection';
+    case 'noscale':
+        return 'noScale';
+    case 'noscaleorreflection':
+        return 'noScaleOrReflection';
+    default:
+        return '';
+    }
+}
+
+function applyNativeBoneInheritCompat (json, dryRun) {
+    if (!json || !Array.isArray(json.bones) || json.bones.length === 0) {
+        return false;
+    }
+
+    let patched = false;
+    for (let i = 0; i < json.bones.length; i++) {
+        let bone = json.bones[i];
+        if (!bone || typeof bone !== 'object') {
+            continue;
+        }
+
+        let inheritValue = bone.inherit;
+        let normalizedInherit = normalizeNativeInheritMode(inheritValue);
+        if (normalizedInherit && inheritValue !== normalizedInherit) {
+            if (!dryRun) {
+                bone.inherit = normalizedInherit;
+            }
+            patched = true;
+        }
+
+        if (bone.inherit == null && typeof bone.transform === 'string') {
+            let normalizedTransform = normalizeNativeInheritMode(bone.transform);
+            if (normalizedTransform) {
+                if (!dryRun) {
+                    bone.inherit = normalizedTransform;
+                }
+                patched = true;
+            }
+        }
+    }
+
+    return patched;
+}
+
 function getNativeCompatibleSkeletonJsonString (skeletonJson) {
     if (!skeletonJson) {
         return '';
@@ -535,6 +596,15 @@ function getNativeCompatibleSkeletonJsonString (skeletonJson) {
             nativeJson.skeleton.spine = '4.2.00';
             patched = true;
         }
+    }
+
+    let needsBoneInheritPatch = applyNativeBoneInheritCompat(nativeJson, true);
+    if (needsBoneInheritPatch) {
+        if (nativeJson === skeletonJson) {
+            nativeJson = JSON.parse(JSON.stringify(skeletonJson));
+        }
+        applyNativeBoneInheritCompat(nativeJson, false);
+        patched = true;
     }
 
     return {
@@ -555,6 +625,7 @@ function getNativeCompatibleJsonText (jsonText) {
 
     try {
         let json = JSON.parse(jsonText);
+        let boneInheritPatched = applyNativeBoneInheritCompat(json);
         if (json && json.skeleton && typeof json.skeleton.spine === 'string') {
             let spineVersion = json.skeleton.spine;
             if (/^4\./.test(spineVersion) && !/^4\.2(\.|$)/.test(spineVersion)) {
@@ -566,9 +637,17 @@ function getNativeCompatibleJsonText (jsonText) {
                 };
             }
             return {
-                text: jsonText,
-                patched: false,
+                text: boneInheritPatched ? JSON.stringify(json) : jsonText,
+                patched: boneInheritPatched,
                 originalVersion: spineVersion,
+            };
+        }
+
+        if (boneInheritPatched) {
+            return {
+                text: JSON.stringify(json),
+                patched: true,
+                originalVersion: '',
             };
         }
     } catch (e) {
