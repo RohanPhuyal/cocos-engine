@@ -1629,22 +1629,17 @@ sp4.Skeleton = cc.Class({
     },
 
     _applyConfiguredSkins() {
-        cc.log('[sp4][jsb] _applyConfiguredSkins. enableMultipleSkins:', this.enableMultipleSkins, 'defaultSkin:', this.defaultSkin, 'activeSkins:', this.activeSkins ? this.activeSkins.join(',') : 'null');
-
         if (this.enableMultipleSkins) {
             let activeSkins = this.getActiveSkins();
-            cc.log('[sp4][jsb] _applyConfiguredSkins: getActiveSkins() returned', activeSkins.length, 'skins:', activeSkins.join(','));
             if (activeSkins.length > 0) {
                 return this._applySkinNames(activeSkins);
             }
         }
 
         if (this.defaultSkin) {
-            cc.log('[sp4][jsb] _applyConfiguredSkins: falling back to defaultSkin');
             return this._applySkinNames([this.defaultSkin]);
         }
 
-        cc.log('[sp4][jsb] _applyConfiguredSkins: falling back to no skin (clearing)');
         if (this._skeleton) {
             this._skeleton.setSkin(null);
             this._skeleton.setSlotsToSetupPose();
