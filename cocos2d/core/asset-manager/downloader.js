@@ -60,14 +60,33 @@ var downloadAudio = function (url, options, onComplete) {
 var downloadAudio = (!CC_EDITOR || !Editor.isMainProcess) ? (formatSupport.length === 0 ? unsupported : (__audioSupport.WEB_AUDIO ? downloadAudio : downloadDomAudio)) : null;
 
 var downloadImage = function (url, options, onComplete) {
+    options = options || {};
+    let forceDomImage = !!(options.forceDomImage || downloader.forceDomImage);
     // if createImageBitmap is valid, we can transform blob to ImageBitmap. Otherwise, just use HTMLImageElement to load
-    var func = capabilities.imageBitmap && cc.macro.ALLOW_IMAGE_BITMAP ? downloadBlob : downloadDomImage;
+    var func = !forceDomImage && capabilities.imageBitmap && cc.macro.ALLOW_IMAGE_BITMAP ? downloadBlob : downloadDomImage;
     func.apply(this, arguments);
 };
 
 var downloadBlob = function (url, options, onComplete) {
+    options = options || {};
     options.responseType = "blob";
-    downloadFile(url, options, options.onFileProgress, onComplete);
+    downloadFile(url, options, options.onFileProgress, function (err, data) {
+        let hasUsableBlob = (typeof Blob !== 'undefined') && (data instanceof Blob) && data.size > 0;
+        if (!err && hasUsableBlob) {
+            onComplete && onComplete(null, data);
+            return;
+        }
+
+        // Some browsers/dev servers may report blob XHR as failed/empty even when image
+        // is still fetchable. Fallback to DOM image loading for resilience.
+        downloadDomImage(url, options, function (domErr, img) {
+            if (!domErr) {
+                onComplete && onComplete(null, img);
+                return;
+            }
+            onComplete && onComplete(err || domErr, data || img);
+        });
+    });
 };
 
 var downloadJson = function (url, options, onComplete) {
@@ -262,6 +281,10 @@ var downloader = {
     maxRetryCount: 3,
 
     appendTimeStamp: false,
+
+    // DOM image loading is more stable in local web-preview when dev-server cache
+    // responses can cause noisy XHR blob failures (e.g. 304/ERR_FAILED).
+    forceDomImage: (typeof CC_PREVIEW !== 'undefined') ? !!CC_PREVIEW : false,
 
     limited: true,
 

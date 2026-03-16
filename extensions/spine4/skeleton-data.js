@@ -321,7 +321,7 @@ let SkeletonData = cc.Class({
 
     // PRIVATE
 
-    _getTexture: function (line, allowSingleFallback) {
+    _getTexture: function (line, allowSingleFallback, pageIndex) {
         let normalize = function (value) {
             return (value || '').trim().replace(/\\/g, '/').toLowerCase();
         };
@@ -332,6 +332,20 @@ let SkeletonData = cc.Class({
         let stripExt = function (value) {
             return (value || '').replace(/\.[^/.]+$/, '');
         };
+        let toTexture = function (texture) {
+            if (!texture) {
+                return null;
+            }
+            let tex = new sp4.SkeletonTexture({ width: texture.width, height: texture.height });
+            tex.setRealTexture(texture);
+            return tex;
+        };
+        let isMatch = function (candidate, candidateBase, candidateNoExt, candidateBaseNoExt, target, targetBase, targetNoExt, targetBaseNoExt) {
+            return candidate === target ||
+                candidateBase === targetBase ||
+                candidateNoExt === targetNoExt ||
+                candidateBaseNoExt === targetBaseNoExt;
+        };
 
         let target = normalize(line);
         let targetBase = getBase(line);
@@ -340,31 +354,31 @@ let SkeletonData = cc.Class({
 
         let names = this.textureNames || [];
         let textures = this.textures || [];
-        for (let i = 0; i < names.length; i++) {
-            let current = normalize(names[i]);
-            let currentBase = getBase(names[i]);
-            let currentNoExt = stripExt(current);
-            let currentBaseNoExt = stripExt(currentBase);
-
-            let matched = current === target ||
-                currentBase === targetBase ||
-                currentNoExt === targetNoExt ||
-                currentBaseNoExt === targetBaseNoExt;
-
-            if (matched && textures[i]) {
-                let texture = textures[i];
-                let tex = new sp4.SkeletonTexture({ width: texture.width, height: texture.height });
-                tex.setRealTexture(texture);
-                return tex;
+        for (let i = 0; i < textures.length; i++) {
+            let texture = textures[i];
+            let candidates = [names[i], texture && texture.name, texture && texture.nativeUrl];
+            for (let c = 0; c < candidates.length; c++) {
+                let source = candidates[c];
+                if (!source) {
+                    continue;
+                }
+                let current = normalize(source);
+                let currentBase = getBase(source);
+                let currentNoExt = stripExt(current);
+                let currentBaseNoExt = stripExt(currentBase);
+                if (isMatch(current, currentBase, currentNoExt, currentBaseNoExt, target, targetBase, targetNoExt, targetBaseNoExt)) {
+                    return toTexture(texture);
+                }
             }
         }
 
+        if (textures.length > 0 && Number.isInteger(pageIndex) && pageIndex >= 0 && pageIndex < textures.length) {
+            return toTexture(textures[pageIndex]);
+        }
+
         // Optional fallback only when atlas is single-page and only one texture is assigned.
-        if (allowSingleFallback && textures.length === 1 && textures[0]) {
-            let texture = textures[0];
-            let tex = new sp4.SkeletonTexture({ width: texture.width, height: texture.height });
-            tex.setRealTexture(texture);
-            return tex;
+        if (allowSingleFallback && textures.length > 0) {
+            return toTexture(textures[0]);
         }
 
         if (CC_JSB && !_global.__sp4DebugFlags.textureMissLogged) {
@@ -422,7 +436,7 @@ let SkeletonData = cc.Class({
         let singlePageAtlas = atlas.pages.length === 1;
         for (let i = 0; i < atlas.pages.length; i++) {
             let page = atlas.pages[i];
-            let tex = this._getTexture(page.name, singlePageAtlas);
+            let tex = this._getTexture(page.name, singlePageAtlas, i);
             if (tex) {
                 page.setTexture(tex);
             }
@@ -482,6 +496,31 @@ function registerNativeTextureAlias (targetMap, key, texture) {
         return;
     }
     targetMap[key] = texture;
+}
+
+function getNativeTextureAlias (targetMap, key) {
+    let normalized = normalizeNativeTextureKey(key);
+    if (!normalized) {
+        return null;
+    }
+
+    let baseName = normalized.split('/').pop();
+    let lower = normalized.toLowerCase();
+    let baseLower = baseName.toLowerCase();
+    let noExt = stripNativeTextureExt(normalized);
+    let baseNoExt = stripNativeTextureExt(baseName);
+    let noExtLower = noExt.toLowerCase();
+    let baseNoExtLower = baseNoExt.toLowerCase();
+
+    return targetMap[normalized] ||
+        targetMap[baseName] ||
+        targetMap[lower] ||
+        targetMap[baseLower] ||
+        targetMap[noExt] ||
+        targetMap[baseNoExt] ||
+        targetMap[noExtLower] ||
+        targetMap[baseNoExtLower] ||
+        null;
 }
 
 function isBinarySkeletonPath (value) {
@@ -773,7 +812,7 @@ if (CC_JSB && CC_NATIVERENDERER && nativeSpine4 && nativeMiddleware && typeof na
 
         let textures = this.textures;
         let textureNames = this.textureNames;
-        if (!(textures && textures.length > 0 && textureNames && textureNames.length > 0)) {
+        if (!(textures && textures.length > 0)) {
             if (!quiet) {
                 cc.errorID(7507, this.name);
             }
@@ -781,6 +820,7 @@ if (CC_JSB && CC_NATIVERENDERER && nativeSpine4 && nativeMiddleware && typeof na
         }
 
         let jsbTextures = {};
+        let firstNativeTexture = null;
         for (let i = 0; i < textures.length; ++i) {
             let texture = textures[i];
             if (!texture || typeof texture.getImpl !== 'function') {
@@ -801,6 +841,9 @@ if (CC_JSB && CC_NATIVERENDERER && nativeSpine4 && nativeMiddleware && typeof na
                 realTexture.setWrapMode(wrapS, wrapT);
             }.bind(this));
             nativeTexture.setNativeTexture(texture.getImpl());
+            if (!firstNativeTexture) {
+                firstNativeTexture = nativeTexture;
+            }
             addNativeTextureAliases(jsbTextures, textureNames[i], nativeTexture);
             addNativeTextureAliases(jsbTextures, texture.name, nativeTexture);
             addNativeTextureAliases(jsbTextures, texture.nativeUrl, nativeTexture);
@@ -815,7 +858,11 @@ if (CC_JSB && CC_NATIVERENDERER && nativeSpine4 && nativeMiddleware && typeof na
 
             let pageName = atlasPages[i];
             let textureName = textureNames[i] || textureNames[0] || pageName;
-            let pageTexture = jsbTextures[pageName] || jsbTextures[textureName];
+            let pageTexture = getNativeTextureAlias(jsbTextures, pageName) ||
+                getNativeTextureAlias(jsbTextures, textureName) ||
+                getNativeTextureAlias(jsbTextures, texture.name) ||
+                getNativeTextureAlias(jsbTextures, texture.nativeUrl) ||
+                firstNativeTexture;
             if (!pageTexture) {
                 continue;
             }
