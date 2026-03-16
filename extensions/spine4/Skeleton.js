@@ -718,7 +718,49 @@ sp4.Skeleton = cc.Class({
             this._rootBone = this._skeleton.getRootBone();
         }
 
+        this._applySkeletonBoundsOffset(skeletonData);
         this.markForRender(true);
+    },
+
+    _applySkeletonBoundsOffset(skeletonData) {
+        if (this.isAnimationCached() || !this._skeleton || !skeletonData) {
+            return;
+        }
+
+        let width = Number(skeletonData.width);
+        let height = Number(skeletonData.height);
+        if (!Number.isFinite(width) || !Number.isFinite(height)) {
+            return;
+        }
+
+        let originX = Number(skeletonData.x);
+        let originY = Number(skeletonData.y);
+        if (!Number.isFinite(originX)) {
+            originX = 0;
+        }
+        if (!Number.isFinite(originY)) {
+            originY = 0;
+        }
+
+        let anchorX = (this.node && Number.isFinite(this.node.anchorX)) ? this.node.anchorX : 0.5;
+        let anchorY = (this.node && Number.isFinite(this.node.anchorY)) ? this.node.anchorY : 0.5;
+        let offsetX = -originX - width * anchorX;
+        let offsetY = -originY - height * anchorY;
+
+        if (typeof this._skeleton.setPosition === 'function') {
+            this._skeleton.setPosition(offsetX, offsetY);
+        } else {
+            this._skeleton.x = offsetX;
+            this._skeleton.y = offsetY;
+        }
+
+        if (typeof this._skeleton.updateWorldTransform === 'function') {
+            try {
+                this._skeleton.updateWorldTransform(spine.Physics.update);
+            } catch (error) {
+                this._skeleton.updateWorldTransform();
+            }
+        }
     },
 
     /**
@@ -1992,6 +2034,7 @@ if (CC_JSB && CC_NATIVERENDERER && nativeSpine4 && nativeRenderer && nativeRende
         this._skeleton = nativeSkeleton.getSkeleton();
         this._rootBone = this._skeleton && this._skeleton.getRootBone ? this._skeleton.getRootBone() : null;
         this._state = !this.isAnimationCached() && nativeSkeleton.getState ? nativeSkeleton.getState() : null;
+        this._applySkeletonBoundsOffset(skeletonData);
 
         this._startListener && this.setStartListener(this._startListener);
         this._interruptListener && this.setInterruptListener(this._interruptListener);
