@@ -169,11 +169,17 @@ let SkeletonData = cc.Class({
     },
 
     ensureTexturesLoaded (loaded, caller) {
-        let textures = this.textures; 
-        let texsLen = textures.length;
+        let textures = this.textures;
+        let texsLen = textures && textures.length || 0;
         if (texsLen == 0) {
             loaded.call(caller, false);
             return;
+        }
+        for (let i = 0; i < texsLen; i++) {
+            if (!textures[i]) {
+                loaded.call(caller, false);
+                return;
+            }
         }
         let loadedCount = 0;
         let loadedItem = function () {
@@ -194,10 +200,16 @@ let SkeletonData = cc.Class({
     },
 
     isTexturesLoaded () {
-        let textures = this.textures; 
-        let texsLen = textures.length;
+        let textures = this.textures;
+        let texsLen = textures && textures.length || 0;
+        if (texsLen === 0) {
+            return false;
+        }
         for (let i = 0; i < texsLen; i++) {
             let tex = textures[i];
+            if (!tex) {
+                return false;
+            }
             if (!tex.loaded) {
                 return false;
             }
@@ -288,15 +300,60 @@ let SkeletonData = cc.Class({
     // PRIVATE
 
     _getTexture: function (line) {
-        let names = this.textureNames;
-        for (let i = 0; i < names.length; i++) {
-            if (names[i] === line) {
-                let texture = this.textures[i];
-                let tex = new sp.SkeletonTexture({ width: texture.width, height: texture.height });
-                tex.setRealTexture(texture);
-                return tex;
+        let normalize = function (value) {
+            return (value || '').trim().replace(/\\/g, '/').toLowerCase();
+        };
+        let getBase = function (value) {
+            let normalized = normalize(value);
+            return normalized && normalized.split('/').pop();
+        };
+        let stripExt = function (value) {
+            return (value || '').replace(/\.[^/.]+$/, '');
+        };
+        let toTexture = function (texture) {
+            if (!texture) {
+                return null;
+            }
+            let tex = new sp.SkeletonTexture({ width: texture.width, height: texture.height });
+            tex.setRealTexture(texture);
+            return tex;
+        };
+        let isMatch = function (candidate, candidateBase, candidateNoExt, candidateBaseNoExt, target, targetBase, targetNoExt, targetBaseNoExt) {
+            return candidate === target ||
+                candidateBase === targetBase ||
+                candidateNoExt === targetNoExt ||
+                candidateBaseNoExt === targetBaseNoExt;
+        };
+
+        let target = normalize(line);
+        let targetBase = getBase(line);
+        let targetNoExt = stripExt(target);
+        let targetBaseNoExt = stripExt(targetBase);
+
+        let names = this.textureNames || [];
+        let textures = this.textures || [];
+        for (let i = 0; i < textures.length; i++) {
+            let texture = textures[i];
+            let candidates = [names[i], texture && texture.name, texture && texture.nativeUrl];
+            for (let c = 0; c < candidates.length; c++) {
+                let source = candidates[c];
+                if (!source) {
+                    continue;
+                }
+                let current = normalize(source);
+                let currentBase = getBase(source);
+                let currentNoExt = stripExt(current);
+                let currentBaseNoExt = stripExt(currentBase);
+                if (isMatch(current, currentBase, currentNoExt, currentBaseNoExt, target, targetBase, targetNoExt, targetBaseNoExt)) {
+                    return toTexture(texture);
+                }
             }
         }
+
+        if (textures.length === 1) {
+            return toTexture(textures[0]);
+        }
+
         cc.errorID(7506, line);
         return null;
     },

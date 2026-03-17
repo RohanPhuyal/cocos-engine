@@ -7,7 +7,8 @@
   "scripts": {
     "test": "gulp test-in-ci",
     "build-chunks": "node ./cocos2d/renderer/build/build-chunks",
-    "build-mapping": "node ./cocos2d/renderer/build/build-mapping"
+    "build-mapping": "node ./cocos2d/renderer/build/build-mapping",
+    "postinstall": "node ./scripts/fix-baseline-browser-mapping.js"
   },
   "devDependencies": {
     "@babel/core": "^7.4.4",

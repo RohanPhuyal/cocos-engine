@@ -46,6 +46,19 @@ const ATLAS_EXTS = ['.atlas', '.txt', '.atlas.txt', ''];
 const SPINE_ENCODING = { encoding: 'utf-8' };
 
 const CustomAssetMeta = Editor.metas['custom-asset'];
+let Spine4Meta = null;
+
+try {
+    Spine4Meta = require('../../spine4/editor/spine4-meta');
+    // Ensure spine4 meta is visible during importer selection in sessions where
+    // the editor did not auto-register the spine4 package.
+    if (Editor && Editor.metas && !Editor.metas.spine4) {
+        Editor.metas.spine4 = Spine4Meta;
+    }
+}
+catch (e) {
+    Spine4Meta = null;
+}
 
 function getSpineMajorVersion (json) {
     if (json && json.skeleton && typeof json.skeleton.spine === 'string') {
@@ -83,6 +96,14 @@ function getSkeletonDataAssetCtorByJson (json) {
     return sp.SkeletonData;
 }
 
+function shouldUseSpine4ImporterTag (json) {
+    let major = getSpineMajorVersion(json);
+    return major !== null &&
+        major >= 4 &&
+        !!Spine4Runtime &&
+        !!(Editor && Editor.metas && Editor.metas.spine4);
+}
+
 function normalizeTextureUuid (value) {
     if (!value) {
         return '';
@@ -96,6 +117,9 @@ function normalizeTextureUuid (value) {
     }
 
     if (typeof value === 'object') {
+        if (typeof value.__uuid__ === 'string' && value.__uuid__) {
+            return value.__uuid__;
+        }
         if (typeof value._uuid === 'string' && value._uuid) {
             return value._uuid;
         }
@@ -108,6 +132,48 @@ function normalizeTextureUuid (value) {
     }
 
     return '';
+}
+
+function normalizeTextureUuidList (value) {
+    let list = Array.isArray(value) ? value : (value ? [value] : []);
+    return list.map(normalizeTextureUuid).filter(Boolean);
+}
+
+function resolveTextureName (value) {
+    if (!value) {
+        return '';
+    }
+
+    let url = '';
+    if (typeof value === 'string') {
+        if (/^[0-9a-f-]{36}$/i.test(value)) {
+            url = Editor.assetdb.uuidToUrl(value) || '';
+        }
+        else {
+            url = value;
+        }
+    }
+    else if (typeof value === 'object') {
+        if (typeof value.url === 'string' && value.url) {
+            url = value.url;
+        }
+        else if (typeof value.__uuid__ === 'string' && value.__uuid__) {
+            url = Editor.assetdb.uuidToUrl(value.__uuid__) || '';
+        }
+        else if (typeof value._uuid === 'string' && value._uuid) {
+            url = Editor.assetdb.uuidToUrl(value._uuid) || '';
+        }
+        else if (typeof value.uuid === 'string' && value.uuid) {
+            url = Editor.assetdb.uuidToUrl(value.uuid) || '';
+        }
+    }
+
+    if (!url) {
+        return '';
+    }
+
+    url = url.split('?')[0].split('#')[0];
+    return Path.basename(url);
 }
 
 function guessSiblingTextureUuids (skeletonPath) {
@@ -125,6 +191,32 @@ function guessSiblingTextureUuids (skeletonPath) {
         if (uuid) {
             uuids.push(uuid);
             names.push(Path.basename(imgPath));
+        }
+    }
+
+    if (uuids.length === 0) {
+        let dir = Path.dirname(skeletonPath);
+        let files = [];
+        try {
+            files = Fs.readdirSync(dir);
+        }
+        catch (e) {
+            files = [];
+        }
+
+        for (let i = 0; i < files.length; i++) {
+            let file = files[i];
+            let ext = Path.extname(file).toLowerCase();
+            if (exts.indexOf(ext) === -1) {
+                continue;
+            }
+            let imgPath = Path.join(dir, file);
+            let uuid = Editor.assetdb.fspathToUuid(imgPath);
+            if (!uuid) {
+                continue;
+            }
+            uuids.push(uuid);
+            names.push(file);
         }
     }
 
@@ -177,6 +269,12 @@ class TextureParser {
         // array of corresponding line
         this.textureNames = [];
     }
+    _createDummyTexture () {
+        var tex = new this.runtime.Texture({});
+        tex.setFilters = function() {};
+        tex.setWraps = function() {};
+        return tex;
+    }
     load (line) {
         line = (line || '').trim().replace(/\\/g, '/');
         if (!line) {
@@ -196,20 +294,19 @@ class TextureParser {
             console.log('UUID is initialized for "%s".', path);
             this.textures.push(uuid);
             this.textureNames.push(line);
-            var tex = new this.runtime.Texture({});
-            tex.setFilters = function() {};
-            tex.setWraps = function() {};
-            return tex;
+            return this._createDummyTexture();
         }
         else if (!Fs.existsSync(path)) {
             Editor.error('Can not find texture "%s" for atlas "%s"', line, this.atlasPath);
+            // Keep atlas parse alive so importer can fallback to manual/guessed textures.
+            return this._createDummyTexture();
         }
         else {
             // AssetDB may call postImport more than once, we can get uuid in the next time.
             console.warn('WARN: UUID not yet initialized for "%s".', path);
+            // Keep atlas parse alive so importer can fallback to manual textures.
+            return this._createDummyTexture();
         }
-
-        return null;
     }
 }
 
@@ -217,6 +314,8 @@ class SpineMeta extends CustomAssetMeta {
     constructor (assetdb) {
         super(assetdb);
         this.textures = [];
+        this.textureNames = [];
+        this.manualTextureOverride = false;
         this.scale = 1;
     }
 
@@ -235,13 +334,23 @@ class SpineMeta extends CustomAssetMeta {
         if (!this.textures || !this.textures[0]) {
             return '';
         }
-        return Editor.assetdb.uuidToUrl(this.textures[0]) || '';
+        let uuid = normalizeTextureUuid(this.textures[0]);
+        if (!uuid) {
+            return '';
+        }
+        return Editor.assetdb.uuidToUrl(uuid) || '';
     }
     set texture (value) {
         let uuid = normalizeTextureUuid(value);
         this.textures = uuid ? [uuid] : [];
-        if (uuid && (!this.textureNames || this.textureNames.length === 0)) {
-            this.textureNames = ['texture'];
+        if (uuid) {
+            let textureName = resolveTextureName(value) || 'texture';
+            this.textureNames = [textureName];
+            this.manualTextureOverride = true;
+        }
+        else {
+            this.textureNames = [];
+            this.manualTextureOverride = false;
         }
     }
 
@@ -277,7 +386,9 @@ class SpineMeta extends CustomAssetMeta {
             if (!Array.isArray(json.bones)) {
                 return false;
             }
-            // Accept Spine3 and Spine4 JSON here.
+            // Keep Spine meta as a stable fallback for both Spine 3.x and 4.x.
+            // Runtime/asset ctor selection still routes 4.x data to spine4 classes
+            // in _importJson via getRuntimeByJson/getSkeletonDataAssetCtorByJson.
             return true;
         }
         return false;
@@ -304,11 +415,13 @@ class SpineMeta extends CustomAssetMeta {
             // If atlas texture auto-discovery fails, keep manually assigned texture from inspector.
             let textures = textureParser.textures;
             let textureNames = textureParser.textureNames;
-            let manualTextures = (this.textures || [])
-                .map(normalizeTextureUuid)
-                .filter(Boolean);
+            let manualTextures = normalizeTextureUuidList(this.textures);
 
-            if (textures.length === 0 && manualTextures.length > 0) {
+            if (this.manualTextureOverride && manualTextures.length > 0) {
+                textures = manualTextures;
+                textureNames = this.textureNames && this.textureNames.length > 0 ? this.textureNames.slice() : ['texture'];
+            }
+            else if (textures.length === 0 && manualTextures.length > 0) {
                 textures = manualTextures;
                 // Keep at least one texture name entry so runtime lookup has a key.
                 textureNames = this.textureNames && this.textureNames.length > 0 ? this.textureNames.slice() : ['texture'];
@@ -321,6 +434,10 @@ class SpineMeta extends CustomAssetMeta {
                     textures = guessed.uuids;
                     textureNames = guessed.names;
                 }
+            }
+
+            if (this.manualTextureOverride && manualTextures.length === 0) {
+                this.manualTextureOverride = false;
             }
 
             this.textures = textures;
@@ -351,6 +468,17 @@ class SpineMeta extends CustomAssetMeta {
             var AssetCtor = getSkeletonDataAssetCtorByJson(json);
             if (!AssetCtor) {
                 return cb(new Error('Can not resolve Spine4 SkeletonData asset class.'));
+            }
+
+            // Keep using the stable spine importer implementation, but stamp 4.x
+            // assets as spine4 in generated meta when spine4 meta is available.
+            if (shouldUseSpine4ImporterTag(json)) {
+                this.importer = 'spine4';
+                this.ver = '1.0.0';
+            }
+            else {
+                this.importer = 'spine';
+                this.ver = SpineMeta.version();
             }
 
             var asset = new AssetCtor();

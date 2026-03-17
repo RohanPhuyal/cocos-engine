@@ -22,7 +22,7 @@
             module = cache[name] = {exports: exports};
             moduleData[0](function(x){
                 return newRequire(moduleData[1][x] || x);
-            },module,exports);
+            }, module, exports, outer, modules, cache, entry);
         }
         return module.exports;
     }

@@ -24,6 +24,20 @@
  ****************************************************************************/
 const { parseParameters } = require('./utilities');
 
+function isRequestSuccessful (status) {
+    return (status >= 200 && status < 300) || status === 304 || status === 0 || status === 1223;
+}
+
+function appendCacheBust (url) {
+    if (typeof url !== 'string') {
+        return url;
+    }
+    if (/\?/.test(url)) {
+        return url + '&_cb=' + (new Date() - 0);
+    }
+    return url + '?_cb=' + (new Date() - 0);
+}
+
 function downloadFile (url, options, onProgress, onComplete) {
     var { options, onProgress, onComplete } = parseParameters(options, onProgress, onComplete);
 
@@ -42,13 +56,68 @@ function downloadFile (url, options, onProgress, onComplete) {
         }
     }
 
+    function hasEmptyResponse () {
+        var response = xhr.response;
+        if (options.responseType === 'blob') {
+            if (typeof Blob === 'undefined' || !(response instanceof Blob)) {
+                return true;
+            }
+            return response.size === 0;
+        }
+        if (options.responseType === 'arraybuffer') {
+            return !response || response.byteLength === 0;
+        }
+        return response == null || response === '';
+    }
+
+    function shouldRetryNoCacheFor304 () {
+        if (options.__cacheBustRetry) {
+            return false;
+        }
+
+        // Some dev servers return 304 for blob requests with unusable payload in XHR.
+        // Force one cache-busted retry for image/blob downloads to guarantee valid data.
+        if (xhr.status === 304 && options.responseType === 'blob') {
+            return true;
+        }
+
+        // Defensive: handle cases where status looks successful but payload is empty.
+        return (xhr.status === 304 || xhr.status === 0) && hasEmptyResponse();
+    }
+
+    function retryNoCache () {
+        var retryOptions = {};
+        for (var key in options) {
+            retryOptions[key] = options[key];
+        }
+        retryOptions.__cacheBustRetry = true;
+
+        var headers = {};
+        if (options.header) {
+            for (var name in options.header) {
+                headers[name] = options.header[name];
+            }
+        }
+        if (headers['Cache-Control'] === undefined) {
+            headers['Cache-Control'] = 'no-cache';
+        }
+        if (headers['Pragma'] === undefined) {
+            headers['Pragma'] = 'no-cache';
+        }
+        retryOptions.header = headers;
+        downloadFile(appendCacheBust(url), retryOptions, onProgress, onComplete);
+    }
+
     xhr.onload = function () {
-        if ( xhr.status === 200 || xhr.status === 0 ) {
+        if (isRequestSuccessful(xhr.status)) {
+            if (shouldRetryNoCacheFor304()) {
+                retryNoCache();
+                return;
+            }
             onComplete && onComplete(null, xhr.response);
         } else {
             onComplete && onComplete(new Error(errInfo + xhr.status + '(no response)'));
         }
-
     };
 
     if (onProgress) {
@@ -60,6 +129,14 @@ function downloadFile (url, options, onProgress, onComplete) {
     }
 
     xhr.onerror = function(){
+        if (isRequestSuccessful(xhr.status)) {
+            if (shouldRetryNoCacheFor304()) {
+                retryNoCache();
+                return;
+            }
+            onComplete && onComplete(null, xhr.response);
+            return;
+        }
         onComplete && onComplete(new Error(errInfo + xhr.status + '(error)'));
     };
 
