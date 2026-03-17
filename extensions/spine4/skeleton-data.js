@@ -182,11 +182,17 @@ let SkeletonData = cc.Class({
     },
 
     ensureTexturesLoaded (loaded, caller) {
-        let textures = this.textures; 
-        let texsLen = textures.length;
+        let textures = this.textures;
+        let texsLen = textures && textures.length || 0;
         if (texsLen == 0) {
             loaded.call(caller, false);
             return;
+        }
+        for (let i = 0; i < texsLen; i++) {
+            if (!textures[i]) {
+                loaded.call(caller, false);
+                return;
+            }
         }
         let loadedCount = 0;
         let loadedItem = function () {
@@ -207,10 +213,16 @@ let SkeletonData = cc.Class({
     },
 
     isTexturesLoaded () {
-        let textures = this.textures; 
-        let texsLen = textures.length;
+        let textures = this.textures;
+        let texsLen = textures && textures.length || 0;
+        if (texsLen === 0) {
+            return false;
+        }
         for (let i = 0; i < texsLen; i++) {
             let tex = textures[i];
+            if (!tex) {
+                return false;
+            }
             if (!tex.loaded) {
                 return false;
             }
@@ -374,6 +386,12 @@ let SkeletonData = cc.Class({
 
         if (textures.length > 0 && Number.isInteger(pageIndex) && pageIndex >= 0 && pageIndex < textures.length) {
             return toTexture(textures[pageIndex]);
+        }
+
+        // If exactly one texture is assigned (manual drag case), use it even when
+        // atlas page name does not match.
+        if (textures.length === 1) {
+            return toTexture(textures[0]);
         }
 
         // Optional fallback only when atlas is single-page and only one texture is assigned.
