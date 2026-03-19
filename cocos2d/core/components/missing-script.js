@@ -86,6 +86,9 @@ var MissingScript = cc.Class({
          */
         safeFindClass: function (id) {
             var cls = js._getClassById(id);
+            if (!cls && js.getClassByName) {
+                cls = js.getClassByName(id);
+            }
             if (cls) {
                 return cls;
             }
