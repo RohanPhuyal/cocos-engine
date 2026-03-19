@@ -136,7 +136,9 @@ var loadOneAssetPipeline = new Pipeline('loadOneAsset', [
                 if (!options.reload && assets.has(uuid)) {
                     var asset = assets.get(uuid);
                     if (options.__asyncLoadAssets__ || !asset.__asyncLoadAssets__) {
-                        item.content = asset.addRef();
+                        // Some hot-update flows may inject stale/plain objects into cache.
+                        // Avoid hard crash when addRef is unavailable.
+                        item.content = (asset && asset.addRef) ? asset.addRef() : asset;
                         progress.canInvoke && task.dispatch('progress', ++progress.finish, progress.total, item);
                         done();
                     }

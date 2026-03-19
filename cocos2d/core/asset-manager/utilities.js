@@ -207,7 +207,7 @@ var utils = {
                     missingAsset = true;
                 }
                 else {
-                    depend.owner[depend.prop] = dependAsset.addRef();
+                    depend.owner[depend.prop] = (dependAsset && dependAsset.addRef) ? dependAsset.addRef() : dependAsset;
                 }
             }
 
