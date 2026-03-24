@@ -2371,7 +2371,50 @@ if (CC_JSB && CC_NATIVERENDERER && nativeSpine4 && nativeRenderer && nativeRende
                 self._completeListener && self._completeListener(self._endEntry);
             });
         } else {
-            this._nativeSkeleton.setCompleteListener(listener);
+            let buildSafeEntry = (trackEntry) => {
+                if (trackEntry && trackEntry.animation) {
+                    return trackEntry;
+                }
+                let fallbackEntry = this.getCurrent(0) || this._endEntry;
+                if (!fallbackEntry) {
+                    fallbackEntry = { animation: { name: "" }, trackIndex: 0 };
+                } else if (!fallbackEntry.animation) {
+                    fallbackEntry.animation = { name: "" };
+                }
+                if (!fallbackEntry.animation.name && this._animationName) {
+                    fallbackEntry.animation.name = this._animationName;
+                }
+                return fallbackEntry;
+            };
+            let safeLoopCount = (trackEntry) => {
+                let trackTime = Number(trackEntry && trackEntry.trackTime);
+                let animationEnd = Number(trackEntry && trackEntry.animationEnd);
+                if (!isFinite(trackTime) || !isFinite(animationEnd) || animationEnd <= 0) {
+                    return 0;
+                }
+                return Math.floor(trackTime / animationEnd);
+            };
+            // spine4 JSB exports renamed APIs in native: setCompleteListenerNative/setTrackCompleteListenerNative.
+            // Keep compatibility with both names to avoid runtime TypeError on native platforms.
+            if (this._nativeSkeleton.setCompleteListener) {
+                if (!listener) {
+                    this._nativeSkeleton.setCompleteListener(null);
+                } else {
+                    this._nativeSkeleton.setCompleteListener((trackEntry) => {
+                        let safeEntry = buildSafeEntry(trackEntry);
+                        listener && listener(safeEntry, safeLoopCount(safeEntry));
+                    });
+                }
+            } else if (this._nativeSkeleton.setCompleteListenerNative) {
+                if (!listener) {
+                    this._nativeSkeleton.setCompleteListenerNative(null);
+                } else {
+                    this._nativeSkeleton.setCompleteListenerNative((trackEntry) => {
+                        let safeEntry = buildSafeEntry(trackEntry);
+                        listener && listener(safeEntry, safeLoopCount(safeEntry));
+                    });
+                }
+            }
         }
     };
 
@@ -2408,7 +2451,48 @@ if (CC_JSB && CC_NATIVERENDERER && nativeSpine4 && nativeRenderer && nativeRende
 
     skeletonProto.setTrackCompleteListener = function (entry, listener) {
         if (this._nativeSkeleton && !this.isAnimationCached()) {
-            this._nativeSkeleton.setTrackCompleteListener(entry, listener);
+            let buildSafeEntry = (trackEntry) => {
+                if (trackEntry && trackEntry.animation) {
+                    return trackEntry;
+                }
+                let fallbackEntry = entry || this.getCurrent(0) || this._endEntry;
+                if (!fallbackEntry) {
+                    fallbackEntry = { animation: { name: "" }, trackIndex: 0 };
+                } else if (!fallbackEntry.animation) {
+                    fallbackEntry.animation = { name: "" };
+                }
+                if (!fallbackEntry.animation.name && this._animationName) {
+                    fallbackEntry.animation.name = this._animationName;
+                }
+                return fallbackEntry;
+            };
+            let safeLoopCount = (trackEntry) => {
+                let trackTime = Number(trackEntry && trackEntry.trackTime);
+                let animationEnd = Number(trackEntry && trackEntry.animationEnd);
+                if (!isFinite(trackTime) || !isFinite(animationEnd) || animationEnd <= 0) {
+                    return 0;
+                }
+                return Math.floor(trackTime / animationEnd);
+            };
+            if (this._nativeSkeleton.setTrackCompleteListener) {
+                if (!listener) {
+                    this._nativeSkeleton.setTrackCompleteListener(entry, null);
+                } else {
+                    this._nativeSkeleton.setTrackCompleteListener(entry, (trackEntry) => {
+                        let safeEntry = buildSafeEntry(trackEntry);
+                        listener && listener(safeEntry, safeLoopCount(safeEntry));
+                    });
+                }
+            } else if (this._nativeSkeleton.setTrackCompleteListenerNative) {
+                if (!listener) {
+                    this._nativeSkeleton.setTrackCompleteListenerNative(entry, null);
+                } else {
+                    this._nativeSkeleton.setTrackCompleteListenerNative(entry, (trackEntry) => {
+                        let safeEntry = buildSafeEntry(trackEntry);
+                        listener && listener(safeEntry, safeLoopCount(safeEntry));
+                    });
+                }
+            }
         }
     };
 
