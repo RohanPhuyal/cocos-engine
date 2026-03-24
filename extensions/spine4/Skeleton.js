@@ -2371,20 +2371,71 @@ if (CC_JSB && CC_NATIVERENDERER && nativeSpine4 && nativeRenderer && nativeRende
                 self._completeListener && self._completeListener(self._endEntry);
             });
         } else {
+            let readAnimationName = (trackEntry) => {
+                if (!trackEntry) {
+                    return "";
+                }
+                try {
+                    if (trackEntry.animation && trackEntry.animation.name) {
+                        return trackEntry.animation.name;
+                    }
+                } catch (e) {
+                    // ignore and try JSB-style getters below
+                }
+                try {
+                    if (typeof trackEntry.getAnimation === "function") {
+                        let animation = trackEntry.getAnimation();
+                        if (animation) {
+                            if (animation.name) {
+                                return animation.name;
+                            }
+                            if (typeof animation.getName === "function") {
+                                return animation.getName() || "";
+                            }
+                        }
+                    }
+                } catch (e) {
+                    // ignore and fall back to current animation name
+                }
+                return "";
+            };
+            let readNumber = (trackEntry, fieldName, getterName) => {
+                if (!trackEntry) {
+                    return 0;
+                }
+                try {
+                    let direct = Number(trackEntry[fieldName]);
+                    if (isFinite(direct)) {
+                        return direct;
+                    }
+                } catch (e) {
+                    // ignore and try getter
+                }
+                try {
+                    if (typeof trackEntry[getterName] === "function") {
+                        let value = Number(trackEntry[getterName]());
+                        if (isFinite(value)) {
+                            return value;
+                        }
+                    }
+                } catch (e) {
+                    // ignore
+                }
+                return 0;
+            };
             let buildSafeEntry = (trackEntry) => {
-                if (trackEntry && trackEntry.animation) {
-                    return trackEntry;
+                // Always pass a plain JS object to avoid JSB TrackEntry shape/lifetime differences.
+                let source = trackEntry || this.getCurrent(0) || this._endEntry;
+                let animationName = readAnimationName(source);
+                if (!animationName && this._animationName) {
+                    animationName = this._animationName;
                 }
-                let fallbackEntry = this.getCurrent(0) || this._endEntry;
-                if (!fallbackEntry) {
-                    fallbackEntry = { animation: { name: "" }, trackIndex: 0 };
-                } else if (!fallbackEntry.animation) {
-                    fallbackEntry.animation = { name: "" };
-                }
-                if (!fallbackEntry.animation.name && this._animationName) {
-                    fallbackEntry.animation.name = this._animationName;
-                }
-                return fallbackEntry;
+                return {
+                    animation: { name: animationName || "" },
+                    trackIndex: readNumber(source, "trackIndex", "getTrackIndex"),
+                    trackTime: readNumber(source, "trackTime", "getTrackTime"),
+                    animationEnd: readNumber(source, "animationEnd", "getAnimationEnd"),
+                };
             };
             let safeLoopCount = (trackEntry) => {
                 let trackTime = Number(trackEntry && trackEntry.trackTime);
@@ -2451,20 +2502,71 @@ if (CC_JSB && CC_NATIVERENDERER && nativeSpine4 && nativeRenderer && nativeRende
 
     skeletonProto.setTrackCompleteListener = function (entry, listener) {
         if (this._nativeSkeleton && !this.isAnimationCached()) {
+            let readAnimationName = (trackEntry) => {
+                if (!trackEntry) {
+                    return "";
+                }
+                try {
+                    if (trackEntry.animation && trackEntry.animation.name) {
+                        return trackEntry.animation.name;
+                    }
+                } catch (e) {
+                    // ignore and try JSB-style getters below
+                }
+                try {
+                    if (typeof trackEntry.getAnimation === "function") {
+                        let animation = trackEntry.getAnimation();
+                        if (animation) {
+                            if (animation.name) {
+                                return animation.name;
+                            }
+                            if (typeof animation.getName === "function") {
+                                return animation.getName() || "";
+                            }
+                        }
+                    }
+                } catch (e) {
+                    // ignore and fall back to current animation name
+                }
+                return "";
+            };
+            let readNumber = (trackEntry, fieldName, getterName) => {
+                if (!trackEntry) {
+                    return 0;
+                }
+                try {
+                    let direct = Number(trackEntry[fieldName]);
+                    if (isFinite(direct)) {
+                        return direct;
+                    }
+                } catch (e) {
+                    // ignore and try getter
+                }
+                try {
+                    if (typeof trackEntry[getterName] === "function") {
+                        let value = Number(trackEntry[getterName]());
+                        if (isFinite(value)) {
+                            return value;
+                        }
+                    }
+                } catch (e) {
+                    // ignore
+                }
+                return 0;
+            };
             let buildSafeEntry = (trackEntry) => {
-                if (trackEntry && trackEntry.animation) {
-                    return trackEntry;
+                // Always pass a plain JS object to avoid JSB TrackEntry shape/lifetime differences.
+                let source = trackEntry || entry || this.getCurrent(0) || this._endEntry;
+                let animationName = readAnimationName(source);
+                if (!animationName && this._animationName) {
+                    animationName = this._animationName;
                 }
-                let fallbackEntry = entry || this.getCurrent(0) || this._endEntry;
-                if (!fallbackEntry) {
-                    fallbackEntry = { animation: { name: "" }, trackIndex: 0 };
-                } else if (!fallbackEntry.animation) {
-                    fallbackEntry.animation = { name: "" };
-                }
-                if (!fallbackEntry.animation.name && this._animationName) {
-                    fallbackEntry.animation.name = this._animationName;
-                }
-                return fallbackEntry;
+                return {
+                    animation: { name: animationName || "" },
+                    trackIndex: readNumber(source, "trackIndex", "getTrackIndex"),
+                    trackTime: readNumber(source, "trackTime", "getTrackTime"),
+                    animationEnd: readNumber(source, "animationEnd", "getAnimationEnd"),
+                };
             };
             let safeLoopCount = (trackEntry) => {
                 let trackTime = Number(trackEntry && trackEntry.trackTime);
