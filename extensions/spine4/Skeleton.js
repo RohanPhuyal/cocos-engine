@@ -74,6 +74,60 @@ function setEnumAttr(obj, propName, enumDef) {
     cc.Class.Attr.setClassAttr(obj, propName, 'enumList', cc.Enum.getList(enumDef));
 }
 
+function _readSlotBlendMode(slotData) {
+    if (!slotData) {
+        return null;
+    }
+    if (slotData.blendMode != null) {
+        return slotData.blendMode;
+    }
+    if (slotData.data && slotData.data.blendMode != null) {
+        return slotData.data.blendMode;
+    }
+    if (typeof slotData.getBlendMode === 'function') {
+        return slotData.getBlendMode();
+    }
+    return null;
+}
+
+function _hasScreenBlendMode(runtimeData) {
+    let slots = runtimeData && runtimeData.slots;
+    if (!slots || slots.length === 0) {
+        return false;
+    }
+    for (let i = 0; i < slots.length; i++) {
+        let blendMode = _readSlotBlendMode(slots[i]);
+        if (blendMode === spine.BlendMode.Screen || blendMode === 3 || blendMode === 'screen') {
+            return true;
+        }
+    }
+    return false;
+}
+
+function _ensureTexturesPremultiplied(skeletonData) {
+    let textures = skeletonData && skeletonData.textures;
+    if (!textures || textures.length === 0) {
+        return false;
+    }
+    let hasValidTexture = false;
+    for (let i = 0; i < textures.length; i++) {
+        let tex = textures[i];
+        if (!tex) {
+            continue;
+        }
+        hasValidTexture = true;
+        let hasPma = typeof tex.hasPremultipliedAlpha === 'function' ? tex.hasPremultipliedAlpha() : false;
+        if (!hasPma && typeof tex.setPremultiplyAlpha === 'function') {
+            tex.setPremultiplyAlpha(true);
+            hasPma = typeof tex.hasPremultipliedAlpha === 'function' ? tex.hasPremultipliedAlpha() : false;
+        }
+        if (!hasPma) {
+            return false;
+        }
+    }
+    return hasValidTexture;
+}
+
 /**
  * !#en
  * The skeleton of Spine <br/>
@@ -1840,13 +1894,22 @@ sp4.Skeleton = cc.Class({
         }
 
         // Auto-detect premultiplied alpha from atlas page PMA flag.
-        // Spine atlases can declare pma:true which means RGB is already
-        // multiplied by alpha; the GPU blend must use ONE not SRC_ALPHA.
+        // For screen blend on non-PMA atlases, try to force texture PMA upload
+        // first, then enable PMA blending.
         let _atlas = this.skeletonData && this.skeletonData._atlasCache;
+        let _hasScreenBlend = _hasScreenBlendMode(data);
+        let _forcePmaForScreen = false;
+        if (_hasScreenBlend && _atlas && _atlas.pages && _atlas.pages.length > 0) {
+            let _atlasHasPma = _atlas.pages.some(function (p) { return !!p.pma; });
+            if (!_atlasHasPma) {
+                _forcePmaForScreen = _ensureTexturesPremultiplied(this.skeletonData);
+            }
+        }
         if (_atlas && _atlas.pages && _atlas.pages.length > 0) {
             let _hasPma = _atlas.pages.some(function (p) { return !!p.pma; });
-            if (this.premultipliedAlpha !== _hasPma) {
-                this.premultipliedAlpha = _hasPma;
+            let _wantPma = _hasPma || _forcePmaForScreen;
+            if (this.premultipliedAlpha !== _wantPma) {
+                this.premultipliedAlpha = _wantPma;
                 this._materialCache = {};
             }
         }
@@ -2626,6 +2689,14 @@ if (CC_JSB && CC_NATIVERENDERER && nativeSpine4 && nativeRenderer && nativeRende
         if (!runtimeData) {
             this.disableRender();
             return;
+        }
+
+        if (_hasScreenBlendMode(runtimeData)) {
+            let atlas = this.skeletonData && this.skeletonData._atlasCache;
+            let atlasHasPma = !!(atlas && atlas.pages && atlas.pages.some(function (p) { return !!p.pma; }));
+            if (atlasHasPma || _ensureTexturesPremultiplied(this.skeletonData)) {
+                this.premultipliedAlpha = true;
+            }
         }
 
         this.setSkeletonData(this.skeletonData);
