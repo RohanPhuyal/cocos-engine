@@ -95,7 +95,7 @@ function _getSlotMaterial (tex, blendMode) {
             dst = cc.macro.ONE_MINUS_SRC_ALPHA;
             break;
         case spine.BlendMode.Screen:
-            src = cc.macro.ONE;
+            src = _premultipliedAlpha ? cc.macro.ONE : cc.macro.SRC_ALPHA;
             dst = cc.macro.ONE_MINUS_SRC_COLOR;
             break;
         case spine.BlendMode.Normal:
