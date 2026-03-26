@@ -288,6 +288,7 @@ module.exports = {
             "default_skin": "选择默认的皮肤",
             "animation": "正在播放的动画名称",
             "loop": "是否循环播放当前动画",
+            "preview": "在 Scene 编辑模式下播放 Spine 动画（即使节点未被选中）",
             "time_scale": "当前骨骼中所有动画的时间缩放率",
             "debug_slots": "是否显示 slot 的 debug 信息",
             "debug_bones": "是否显示 bone 的 debug 信息",

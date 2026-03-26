@@ -95,6 +95,8 @@ sp.Skeleton = cc.Class({
         menu: 'i18n:MAIN_MENU.component.renderers/Spine Skeleton',
         help: 'app://docs/html/components/spine.html',
         inspector: 'packages://inspector/inspectors/comps/skeleton2d.js',
+        playOnFocus: true,
+        executeInEditMode: true,
     },
 
     statics: {
@@ -307,6 +309,27 @@ sp.Skeleton = cc.Class({
         loop: {
             default: true,
             tooltip: CC_DEV && 'i18n:COMPONENT.skeleton.loop'
+        },
+
+        /**
+         * !#en Play spine animation in Scene edit mode.
+         * !#zh 在编辑模式下于 Scene 视图播放 Spine 动画。
+         * @property {Boolean} preview
+         * @default false
+         */
+        preview: {
+            default: false,
+            editorOnly: true,
+            notify: CC_EDITOR && function () {
+                if (this.preview) {
+                    this._startPreviewInEditor();
+                } else {
+                    this._stopPreviewInEditor();
+                }
+                cc.engine.repaintInEditMode();
+            },
+            animatable: false,
+            tooltip: CC_DEV && 'i18n:COMPONENT.skeleton.preview'
         },
 
         /**
@@ -603,6 +626,8 @@ sp.Skeleton = cc.Class({
         if (CC_EDITOR) {
             var Flags = cc.Object.Flags;
             this._objFlags |= (Flags.IsAnchorLocked | Flags.IsSizeLocked);
+            this._editorPreviewPlaying = false;
+            this._editorPreviewTimer = null;
             
             this._refreshInspector();
         }
@@ -619,6 +644,93 @@ sp.Skeleton = cc.Class({
         this._updateDebugDraw();
         this._updateUseTint();
         this._updateBatch();
+
+        if (CC_EDITOR && !cc.engine.isPlaying && this.preview) {
+            this._startPreviewInEditor();
+        }
+    },
+
+    _startPreviewInEditor: CC_EDITOR && function () {
+        if (cc.engine.isPlaying || !this.preview) {
+            return;
+        }
+
+        this._editorPreviewPlaying = true;
+        this._ensurePreviewTimerInEditor();
+        let animationName = this.defaultAnimation || this.animation;
+        if (animationName) {
+            this.setAnimation(0, animationName, this.loop);
+        } else {
+            this._refreshSkeletonPoseInEditor();
+        }
+        this.markForRender(true);
+        cc.engine.repaintInEditMode();
+    },
+
+    _stopPreviewInEditor: CC_EDITOR && function () {
+        this._editorPreviewPlaying = false;
+        this._clearPreviewTimerInEditor();
+        if (cc.engine.isPlaying || !this._skeleton) {
+            return;
+        }
+        if (this._state) {
+            this._state.clearTracks();
+        }
+        this.setToSetupPose();
+        this._refreshSkeletonPoseInEditor();
+        cc.engine.repaintInEditMode();
+    },
+
+    _refreshSkeletonPoseInEditor: CC_EDITOR && function () {
+        if (!this._skeleton) {
+            return;
+        }
+        if (this._state) {
+            this._state.update(0);
+            this._state.apply(this._skeleton);
+        }
+        this._skeleton.update(0);
+        this._skeleton.updateWorldTransform();
+        this.markForRender(true);
+    },
+
+    _ensurePreviewTimerInEditor: CC_EDITOR && function () {
+        if (this._editorPreviewTimer) {
+            return;
+        }
+        this._editorPreviewTimer = setInterval(() => {
+            if (!this.preview || cc.engine.isPlaying || !this.enabledInHierarchy) {
+                return;
+            }
+            cc.engine.repaintInEditMode();
+        }, 1000 / 60);
+    },
+
+    _clearPreviewTimerInEditor: CC_EDITOR && function () {
+        if (this._editorPreviewTimer) {
+            clearInterval(this._editorPreviewTimer);
+            this._editorPreviewTimer = null;
+        }
+    },
+
+    onEnable () {
+        this._super();
+        if (CC_EDITOR && !cc.engine.isPlaying && this.preview) {
+            this._startPreviewInEditor();
+        }
+    },
+
+    onDisable () {
+        this._super();
+        if (CC_EDITOR) {
+            this._clearPreviewTimerInEditor();
+        }
+    },
+
+    onDestroy () {
+        if (CC_EDITOR) {
+            this._clearPreviewTimerInEditor();
+        }
     },
 
     /**
@@ -654,7 +766,14 @@ sp.Skeleton = cc.Class({
     },
 
     update (dt) {
-        if (CC_EDITOR) return;
+        if (CC_EDITOR) {
+            if (cc.engine.isPlaying || !this.preview) {
+                return;
+            }
+            if (!this._editorPreviewPlaying) {
+                this._startPreviewInEditor();
+            }
+        }
         if (this.paused) return;
 
         dt *= this.timeScale * sp.timeScale;
@@ -687,6 +806,11 @@ sp.Skeleton = cc.Class({
             this._updateCache(dt);
         } else {
             this._updateRealtime(dt);
+        }
+
+        if (CC_EDITOR && !cc.engine.isPlaying) {
+            this.markForRender(true);
+            cc.engine.repaintInEditMode();
         }
     },
 

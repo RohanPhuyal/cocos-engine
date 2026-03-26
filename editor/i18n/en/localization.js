@@ -284,6 +284,7 @@ module.exports = {
             "default_skin": "Choose the default skin.",
             "animation": "The name of current playing animation.",
             "loop": "Whether loop current animation",
+            "preview": "Play Spine animation in Scene edit mode even when node is not selected.",
             "time_scale": "The time scale of animations of this skeleton",
             "debug_slots": "Indicates whether show debug slots.",
             "debug_bones": "Indicates whether show debug bones.",
