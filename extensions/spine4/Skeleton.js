@@ -128,6 +128,21 @@ function _ensureTexturesPremultiplied(skeletonData) {
     return hasValidTexture;
 }
 
+function _isAtlasPremultiplied(skeletonData) {
+    let atlas = skeletonData && skeletonData._atlasCache;
+    return !!(atlas && atlas.pages && atlas.pages.length > 0 && atlas.pages.some(function (p) { return !!p.pma; }));
+}
+
+function _computeDesiredPremultipliedAlpha(skeletonData, runtimeData) {
+    if (_isAtlasPremultiplied(skeletonData)) {
+        return true;
+    }
+    if (_hasScreenBlendMode(runtimeData)) {
+        return _ensureTexturesPremultiplied(skeletonData);
+    }
+    return false;
+}
+
 /**
  * !#en
  * The skeleton of Spine <br/>
@@ -1998,6 +2013,12 @@ sp4.Skeleton = cc.Class({
             return;
         }
 
+        let _wantPma = _computeDesiredPremultipliedAlpha(this.skeletonData, data);
+        if (this.premultipliedAlpha !== _wantPma) {
+            this.premultipliedAlpha = _wantPma;
+            this._materialCache = {};
+        }
+
         try {
             this.setSkeletonData(data);
             if (!this.isAnimationCached()) {
@@ -2018,27 +2039,6 @@ sp4.Skeleton = cc.Class({
                 cc.log('[sp4][jsb] _updateSkeletonData catch:', e && (e.stack || e.message) ? (e.stack || e.message) : e);
             }
             cc.warn(e && (e.stack || e.message) ? (e.stack || e.message) : e);
-        }
-
-        // Auto-detect premultiplied alpha from atlas page PMA flag.
-        // For screen blend on non-PMA atlases, try to force texture PMA upload
-        // first, then enable PMA blending.
-        let _atlas = this.skeletonData && this.skeletonData._atlasCache;
-        let _hasScreenBlend = _hasScreenBlendMode(data);
-        let _forcePmaForScreen = false;
-        if (_hasScreenBlend && _atlas && _atlas.pages && _atlas.pages.length > 0) {
-            let _atlasHasPma = _atlas.pages.some(function (p) { return !!p.pma; });
-            if (!_atlasHasPma) {
-                _forcePmaForScreen = _ensureTexturesPremultiplied(this.skeletonData);
-            }
-        }
-        if (_atlas && _atlas.pages && _atlas.pages.length > 0) {
-            let _hasPma = _atlas.pages.some(function (p) { return !!p.pma; });
-            let _wantPma = _hasPma || _forcePmaForScreen;
-            if (this.premultipliedAlpha !== _wantPma) {
-                this.premultipliedAlpha = _wantPma;
-                this._materialCache = {};
-            }
         }
 
         this.attachUtil.init(this);
@@ -2818,12 +2818,10 @@ if (CC_JSB && CC_NATIVERENDERER && nativeSpine4 && nativeRenderer && nativeRende
             return;
         }
 
-        if (_hasScreenBlendMode(runtimeData)) {
-            let atlas = this.skeletonData && this.skeletonData._atlasCache;
-            let atlasHasPma = !!(atlas && atlas.pages && atlas.pages.some(function (p) { return !!p.pma; }));
-            if (atlasHasPma || _ensureTexturesPremultiplied(this.skeletonData)) {
-                this.premultipliedAlpha = true;
-            }
+        let wantPma = _computeDesiredPremultipliedAlpha(this.skeletonData, runtimeData);
+        if (this.premultipliedAlpha !== wantPma) {
+            this.premultipliedAlpha = wantPma;
+            this._materialCache = {};
         }
 
         this.setSkeletonData(this.skeletonData);
