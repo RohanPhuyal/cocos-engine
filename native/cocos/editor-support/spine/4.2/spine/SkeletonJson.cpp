@@ -153,9 +153,9 @@ SkeletonData *SkeletonJson::readSkeletonData(const char *json) {
 	if (skeleton) {
 		skeletonData->_hash = Json::getString(skeleton, "hash", 0);
 		skeletonData->_version = Json::getString(skeleton, "spine", 0);
-		if (!skeletonData->_version.startsWith(SPINE_VERSION_STRING)) {
+		if (!skeletonData->_version.startsWith("4.")) {
 			char errorMsg[255];
-			snprintf(errorMsg, 255, "Skeleton version %s does not match runtime version %s", skeletonData->_version.buffer(), SPINE_VERSION_STRING);
+			snprintf(errorMsg, 255, "Skeleton version %s does not match runtime major version 4.x", skeletonData->_version.buffer());
 			delete skeletonData;
 			setError(NULL, errorMsg, "");
 			return NULL;

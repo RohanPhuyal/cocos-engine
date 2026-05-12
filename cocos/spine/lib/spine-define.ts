@@ -27,6 +27,8 @@
 import spine from './spine-core';
 import { SPINE_VERSION } from './spine-version';
 import { js } from '../../core';
+const IS_SPINE_3_X = SPINE_VERSION.startsWith('3.');
+const IS_SPINE_4_X = SPINE_VERSION.startsWith('4.');
 
 function resizeArray (array: any[], newSize: number): any[] {
     if (!array) return new Array(newSize);
@@ -280,7 +282,7 @@ function overrideProperty_Timeline (): void {
 
 function overrideProperty_AttachmentTimeline (): void {
     const prototype = spine.AttachmentTimeline.prototype as any;
-    if (SPINE_VERSION === '3.8') {
+    if (IS_SPINE_3_X) {
         overrideDefineArrayProp(prototype, prototype.getFrames, 'frames');
     }
     overrideDefineArrayProp(prototype, prototype.getAttachmentNames, 'attachmentNames');
@@ -326,6 +328,12 @@ function overrideProperty_Skeleton (): void {
 }
 
 export function overrideSpineDefine (wasm): void {
+    const spineAny = spine as any;
+    if (spineAny.__ccSpineDefineOverridden) {
+        return;
+    }
+    spineAny.__ccSpineDefineOverridden = true;
+
     overrideClass(wasm);
     overrideProperty_IkConstraintData();
     overrideProperty_PathConstraintData();
@@ -343,9 +351,9 @@ export function overrideSpineDefine (wasm): void {
     overrideProperty_SkinEntry();
     overrideProperty_SkeletonData();
     overrideProperty_RotateTimeline();
-    if (SPINE_VERSION === '3.8') {
+    if (IS_SPINE_3_X) {
         overrideProperty_ColorTimeline();
-    } else if (SPINE_VERSION === '4.2') {
+    } else if (IS_SPINE_4_X) {
         overrideProperty_Timeline();
     }
     overrideProperty_AttachmentTimeline();

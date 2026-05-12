@@ -27,7 +27,7 @@ export const SPINE_VERSION = '4.2';
 
 function isVersionCompatible(version: string | null): boolean {
     if (!BUILD) {
-        if (!version || !version.startsWith('4.2.')) {
+        if (!version || !version.startsWith('4.')) {
             return false;
         }
     }

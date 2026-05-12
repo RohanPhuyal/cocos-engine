@@ -40,6 +40,7 @@ import { SkeletonSystem } from './skeleton-system';
 import { RenderEntity, RenderEntityType } from '../2d/renderer/render-entity';
 import { AttachUtil } from './attach-util';
 import spine from './lib/spine-core';
+import spine4 from '../spine4/lib/spine-core';
 import { VertexEffectDelegate } from './vertex-effect-delegate';
 import SkeletonCache, { AnimationCache, AnimationFrame, SkeletonCacheItemInfo } from './skeleton-cache';
 import { TrackEntryListeners } from './track-entry-listeners';
@@ -49,6 +50,32 @@ import { SPINE_VERSION } from './lib/spine-version';
 
 function isSkeletonDataValid (skeletonData: SkeletonData | null): skeletonData is SkeletonData {
     return !!skeletonData && !skeletonData.isEmpty();
+}
+
+function detectSpineVersionFromAsset (skeletonData: SkeletonData | null): string | undefined {
+    if (!skeletonData) {
+        return undefined;
+    }
+    const jsonVersion = (skeletonData as any)?._skeletonJson?.skeleton?.spine as string | undefined;
+    if (jsonVersion) {
+        return jsonVersion;
+    }
+    const nativeAsset = (skeletonData as any)?._nativeAsset as ArrayBuffer | undefined;
+    if (!nativeAsset || nativeAsset.byteLength <= 0) {
+        return undefined;
+    }
+    try {
+        const bytes = new Uint8Array(nativeAsset);
+        const maxLen = Math.min(bytes.length, 2048);
+        let textHead = '';
+        for (let i = 0; i < maxLen; ++i) {
+            textHead += String.fromCharCode(bytes[i]);
+        }
+        const match = /"spine"\s*:\s*"([^"]+)"/.exec(textHead);
+        return match?.[1];
+    } catch {
+        return undefined;
+    }
 }
 
 const CachedFrameTime = 1 / 60;
@@ -246,6 +273,7 @@ export class Skeleton extends UIRenderer {
     protected _enableBatch = false;
 
     protected _runtimeData: spine.SkeletonData | null = null;
+    protected _runtimeSpine: any = spine;
     public _skeleton: spine.Skeleton = null!;
     protected _instance: spine.SkeletonInstance | null = null;
     protected _state: spine.AnimationState = null!;
@@ -336,11 +364,96 @@ export class Skeleton extends UIRenderer {
         this._startSlotIndex = -1;
         this._endSlotIndex = -1;
         if (!JSB) {
-            this._instance = new spine.SkeletonInstance();
-            this._instance.dtRate = this._timeScale * timeScale;
-            this._instance.isCache = this.isAnimationCached();
+            const instance = new this._runtimeSpine.SkeletonInstance();
+            instance.dtRate = this._timeScale * timeScale;
+            instance.isCache = this.isAnimationCached();
+            this._instance = instance;
         }
         this.attachUtil = new AttachUtil();
+    }
+
+    protected _switchRuntimeBySkeletonData (skeletonData: SkeletonData | null): void {
+        const version = detectSpineVersionFromAsset(skeletonData);
+        const nextRuntime = version?.startsWith('4.') ? spine4 : spine;
+        if (this._runtimeSpine === nextRuntime) {
+            return;
+        }
+        this._runtimeSpine = nextRuntime;
+        if (!JSB) {
+            const instance = new this._runtimeSpine.SkeletonInstance();
+            instance.dtRate = this._timeScale * timeScale;
+            instance.isCache = this.isAnimationCached();
+            this._instance = instance;
+        }
+    }
+
+    protected _switchRuntimeByRuntimeData (runtimeData: any): void {
+        const spine4SkeletonDataCtor = (spine4 as any).SkeletonData as (new (...args: any[]) => any) | undefined;
+        const spine3SkeletonDataCtor = (spine as any).SkeletonData as (new (...args: any[]) => any) | undefined;
+
+        let nextRuntime = this._runtimeSpine;
+        if (spine4SkeletonDataCtor && runtimeData instanceof spine4SkeletonDataCtor) {
+            nextRuntime = spine4;
+        } else if (spine3SkeletonDataCtor && runtimeData instanceof spine3SkeletonDataCtor) {
+            nextRuntime = spine;
+        } else {
+            return;
+        }
+
+        if (this._runtimeSpine === nextRuntime) {
+            return;
+        }
+        this._runtimeSpine = nextRuntime;
+        if (!JSB) {
+            const instance = new this._runtimeSpine.SkeletonInstance();
+            instance.dtRate = this._timeScale * timeScale;
+            instance.isCache = this.isAnimationCached();
+            this._instance = instance;
+        }
+    }
+
+    protected _tryPromoteToSpine4Component (skeletonData: SkeletonData | null): boolean {
+        if (!EDITOR_NOT_IN_PREVIEW || !skeletonData || !this.node) {
+            return false;
+        }
+        const version = detectSpineVersionFromAsset(skeletonData);
+        if (!version?.startsWith('4.')) {
+            return false;
+        }
+        // Avoid converting derived types and avoid re-entry if sp4 already exists.
+        if (js.getClassName(this.constructor) !== 'sp.Skeleton') {
+            return false;
+        }
+        const node = this.node;
+        if (node.getComponent('sp4.Skeleton')) {
+            return true;
+        }
+
+        const anyNode = node as any;
+        if (typeof anyNode._removeComponent !== 'function') {
+            return false;
+        }
+
+        // Remove this component first to pass conflict checks when adding sp4.Skeleton.
+        if (node._uiProps.uiComp === this) {
+            node._uiProps.uiComp = null;
+        }
+        anyNode._removeComponent(this);
+        const spine4Skeleton = node.addComponent('sp4.Skeleton') as any;
+        if (!spine4Skeleton) {
+            return false;
+        }
+
+        spine4Skeleton.defaultSkin = this.defaultSkin;
+        spine4Skeleton.defaultAnimation = this.defaultAnimation;
+        spine4Skeleton.loop = this.loop;
+        spine4Skeleton.premultipliedAlpha = this.premultipliedAlpha;
+        spine4Skeleton.timeScale = this.timeScale;
+        spine4Skeleton.useTint = this.useTint;
+        spine4Skeleton.skeletonData = skeletonData as any;
+
+        this.destroy();
+        return true;
     }
 
     /**
@@ -365,6 +478,10 @@ export class Skeleton extends UIRenderer {
         return this._skeletonData;
     }
     set skeletonData (value: SkeletonData | null) {
+        if (this._tryPromoteToSpine4Component(value)) {
+            return;
+        }
+        this._switchRuntimeBySkeletonData(value);
         if (value) value.resetEnums();
         if (this._skeletonData !== value) {
             this.destroyRenderData();
@@ -789,6 +906,7 @@ export class Skeleton extends UIRenderer {
         //this.setSkeletonData(data);
         this._runtimeData = skeletonData!.getRuntimeData();
         if (!this._runtimeData) return;
+        this._switchRuntimeByRuntimeData(this._runtimeData);
         this.setSkeletonData(this._runtimeData);
         this._textures = skeletonData!.textures;
 

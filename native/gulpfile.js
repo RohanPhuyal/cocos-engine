@@ -82,12 +82,24 @@ gulp.task('gen-simulator', async function () {
             args.push(`-DCMAKE_OSX_ARCHITECTURES=x86_64;arm64`);
         }
 
-        if (process.env.SPINE_VERSION === '3.8') {
+        if (process.env.SPINE_VERSION === 'both') {
+            args.push('-DUSE_SPINE=ON');
+            args.push('-DUSE_SPINE_DUAL_RUNTIME=ON');
+            args.push('-DUSE_SPINE_3_8=ON');
+            args.push('-DUSE_SPINE_4_2=OFF');
+            args.push('-DUSE_SPINE4=ON');
+        } else if (process.env.SPINE_VERSION === '3.8') {
+            args.push('-DUSE_SPINE=ON');
+            args.push('-DUSE_SPINE_DUAL_RUNTIME=OFF');
             args.push('-DUSE_SPINE_3_8=ON')
             args.push('-DUSE_SPINE_4_2=OFF')
+            args.push('-DUSE_SPINE4=OFF');
         } else if (process.env.SPINE_VERSION === '4.2') {
+            args.push('-DUSE_SPINE=ON');
+            args.push('-DUSE_SPINE_DUAL_RUNTIME=OFF');
             args.push('-DUSE_SPINE_3_8=OFF')
             args.push('-DUSE_SPINE_4_2=ON')
+            args.push('-DUSE_SPINE4=OFF');
         }
 
         args.push('-DCC_DEBUG_FORCE=ON','-DUSE_V8_DEBUGGER_FORCE=ON');

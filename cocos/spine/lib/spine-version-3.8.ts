@@ -27,7 +27,7 @@ export const SPINE_VERSION = '3.8';
 
 function isVersionCompatible(version: string | null): boolean {
     if (!BUILD) {
-        if (!version || version === '3.8.75' || !version.startsWith('3.8.')) {
+        if (!version || version === '3.8.75' || !version.startsWith('3.')) {
             return false;
         }
     }

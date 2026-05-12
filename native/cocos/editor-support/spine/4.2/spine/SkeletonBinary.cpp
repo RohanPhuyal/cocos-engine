@@ -121,9 +121,9 @@ SkeletonData *SkeletonBinary::readSkeletonData(const unsigned char *binary, cons
 	char *skeletonDataVersion = readString(input);
 	skeletonData->_version.own(skeletonDataVersion);
 
-	if (!skeletonData->_version.startsWith(SPINE_VERSION_STRING)) {
+	if (!skeletonData->_version.startsWith("4.")) {
 		char errorMsg[255];
-		snprintf(errorMsg, 255, "Skeleton version %s does not match runtime version %s", skeletonData->_version.buffer(), SPINE_VERSION_STRING);
+		snprintf(errorMsg, 255, "Skeleton version %s does not match runtime major version 4.x", skeletonData->_version.buffer());
 		setError(errorMsg, "");
 		delete input;
 		delete skeletonData;

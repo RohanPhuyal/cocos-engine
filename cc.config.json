@@ -215,14 +215,14 @@
             }
         },
         "spine-4.2": {
-            "modules": ["spine"],
+            "modules": ["spine4"],
             "dependentAssets": [
                 "c27215d8-6835-4b68-bfbb-bdeac6100c04",
                 "b5d6115f-0370-4d7c-aad3-c194cc71cf98"
             ],
             "dependentModules": ["2d"],
             "intrinsicFlags": {
-                "SPINE_4_2": true
+                "SPINE4_4_2": true
             }
         },
         "dragon-bones": {
@@ -347,6 +347,7 @@
                 "cocos/gfx/base/pipeline-sub-state.ts": "cocos/gfx/base/pipeline-sub-state.jsb.ts",
                 "cocos/gfx/index.ts": "cocos/gfx/index.jsb.ts",
                 "cocos/spine/index.ts": "cocos/spine/index.jsb.ts",
+                "cocos/spine4/index.ts": "cocos/spine4/index.jsb.ts",
                 "cocos/dragon-bones/index.ts": "cocos/dragon-bones/index.jsb.ts",
                 "cocos/physics/physx/instantiate.ts": "cocos/physics/physx/instantiate.jsb.ts",
                 "cocos/scene-graph/node.ts": "cocos/scene-graph/node.jsb.ts",
@@ -461,14 +462,6 @@
             "overrides": {
                 "cocos/spine/lib/spine-version.ts": "cocos/spine/lib/spine-version-3.8.ts",
                 "cocos/spine/lib/spine-instantiate.ts": "cocos/spine/lib/spine-instantiate-3.8.ts"
-            }
-        },
-        {
-            "test": "context.buildTimeConstants.SPINE_4_2",
-            "isVirtualModule": false,
-            "overrides": {
-                "cocos/spine/lib/spine-version.ts": "cocos/spine/lib/spine-version-4.2.ts",
-                "cocos/spine/lib/spine-instantiate.ts": "cocos/spine/lib/spine-instantiate-4.2.ts"
             }
         },
         {

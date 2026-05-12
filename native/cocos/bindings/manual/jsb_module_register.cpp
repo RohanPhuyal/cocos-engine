@@ -116,11 +116,16 @@
     #if CC_USE_SPINE
         #if CC_USE_SPINE_3_8
             #include "cocos/bindings/auto/jsb_spine_3_8_auto.h"
-        #elif CC_USE_SPINE_4_2
+        #endif
+        #if CC_USE_SPINE_4_2
             #include "cocos/bindings/auto/jsb_spine_4_2_auto.h"
         #endif
 
         #include "cocos/bindings/manual/jsb_spine_manual.h"
+    #endif
+    #if CC_USE_SPINE4
+        #include "cocos/bindings/auto/jsb_spine4_auto.h"
+        #include "cocos/bindings/manual/jsb_spine4_manual.h"
     #endif
 
     #if CC_USE_DRAGONBONES
@@ -225,6 +230,10 @@ bool jsb_register_all_modules() {
     #if CC_USE_SPINE
     se->addRegisterCallback(register_all_spine);
     se->addRegisterCallback(register_all_spine_manual);
+    #endif
+    #if CC_USE_SPINE4
+    se->addRegisterCallback(register_all_spine4);
+    se->addRegisterCallback(register_all_spine4_manual);
     #endif
 
     #if CC_USE_DRAGONBONES

@@ -26,12 +26,24 @@ cc_set_if_undefined(USE_VIDEO                ON)
 cc_set_if_undefined(USE_WEBVIEW              ON)
 cc_set_if_undefined(USE_MIDDLEWARE           ON)
 cc_set_if_undefined(USE_DRAGONBONES          ON)
+cc_set_if_undefined(USE_SPINE                ON)
+# Keep legacy per-version switches for backward compatibility.
 cc_set_if_undefined(USE_SPINE_3_8            ON)
 cc_set_if_undefined(USE_SPINE_4_2            OFF)
-if (USE_SPINE_3_8 OR USE_SPINE_4_2)
-    cc_set_if_undefined(USE_SPINE            ON)
+cc_set_if_undefined(USE_SPINE4               OFF)
+# Phase-1 dual-runtime toggle. When ON, both runtimes are built together.
+cc_set_if_undefined(USE_SPINE_DUAL_RUNTIME   OFF)
+if(USE_SPINE)
+    if(USE_SPINE_DUAL_RUNTIME)
+        set(USE_SPINE_3_8 ON)
+        # Keep legacy `spine` lane on 3.8 and build 4.x from the duplicated `spine4` lane.
+        set(USE_SPINE_4_2 OFF)
+        set(USE_SPINE4 ON)
+    endif()
 else()
-    cc_set_if_undefined(USE_SPINE            OFF)
+    set(USE_SPINE_3_8 OFF)
+    set(USE_SPINE_4_2 OFF)
+    set(USE_SPINE4 OFF)
 endif()
 cc_set_if_undefined(USE_WEBSOCKET_SERVER     OFF)
 cc_set_if_undefined(USE_JOB_SYSTEM_TASKFLOW  OFF)
@@ -228,8 +240,10 @@ cc_inspect_values(
     USE_MIDDLEWARE
     USE_DRAGONBONES
     USE_SPINE
+    USE_SPINE_DUAL_RUNTIME
     USE_SPINE_3_8
     USE_SPINE_4_2
+    USE_SPINE4
     USE_WEBSOCKET_SERVER
     USE_PHYSICS_PHYSX
     USE_JOB_SYSTEM_TBB
@@ -2710,6 +2724,27 @@ if(USE_MIDDLEWARE)
         )
     endif()
 
+    if(USE_SPINE4)
+        include_directories(${CWD}/cocos/editor-support/spine4)
+        include_directories(${CWD}/cocos/editor-support/spine4-creator-support)
+
+        file(GLOB SPINE4_RUNTIME_FILES
+            ${CWD}/cocos/editor-support/spine4/*.cpp
+            ${CWD}/cocos/editor-support/spine4/*.h
+            ${CWD}/cocos/editor-support/spine4-creator-support/*.cpp
+            ${CWD}/cocos/editor-support/spine4-creator-support/*.h
+        )
+        cocos_source_files(
+            NO_WERROR ${SPINE4_RUNTIME_FILES}
+        )
+        cocos_source_files(
+            NO_WERROR ${SWIG_OUTPUT}/jsb_spine4_auto.cpp
+                      ${SWIG_OUTPUT}/jsb_spine4_auto.h
+            NO_WERROR cocos/bindings/manual/jsb_spine4_manual.cpp
+                      cocos/bindings/manual/jsb_spine4_manual.h
+        )
+    endif()
+
     if(USE_SPINE)
         cocos_source_files(
             NO_WERROR                cocos/editor-support/spine-creator-support/AttachmentVertices.cpp
@@ -3423,8 +3458,10 @@ function(cc_apply_definations target)
         $<IF:$<AND:$<OR:$<CONFIG:Debug>,$<BOOL:${USE_V8_DEBUGGER_FORCE}>>,$<BOOL:${USE_V8_DEBUGGER}>>,USE_V8_DEBUGGER=1,USE_V8_DEBUGGER=0>
         $<IF:$<BOOL:${USE_MIDDLEWARE}>,CC_USE_MIDDLEWARE=1,CC_USE_MIDDLEWARE=0>
         $<IF:$<BOOL:${USE_SPINE}>,CC_USE_SPINE=1,CC_USE_SPINE=0>
+        $<IF:$<BOOL:${USE_SPINE_DUAL_RUNTIME}>,CC_USE_SPINE_DUAL_RUNTIME=1,CC_USE_SPINE_DUAL_RUNTIME=0>
         $<IF:$<BOOL:${USE_SPINE_3_8}>,CC_USE_SPINE_3_8=1,CC_USE_SPINE_3_8=0>
         $<IF:$<BOOL:${USE_SPINE_4_2}>,CC_USE_SPINE_4_2=1,CC_USE_SPINE_4_2=0>
+        $<IF:$<BOOL:${USE_SPINE4}>,CC_USE_SPINE4=1,CC_USE_SPINE4=0>
         $<IF:$<BOOL:${USE_DRAGONBONES}>,CC_USE_DRAGONBONES=1,CC_USE_DRAGONBONES=0>
         $<IF:$<BOOL:${USE_JOB_SYSTEM_TBB}>,CC_USE_JOB_SYSTEM_TBB=1,CC_USE_JOB_SYSTEM_TBB=0>
         $<IF:$<BOOL:${USE_JOB_SYSTEM_TASKFLOW}>,CC_USE_JOB_SYSTEM_TASKFLOW=1,CC_USE_JOB_SYSTEM_TASKFLOW=0>

@@ -27,10 +27,80 @@ import { CCString, Enum, error, murmurhash2_32_gc } from '../core';
 import SkeletonCache from './skeleton-cache';
 import { Skeleton } from './skeleton';
 import spine from './lib/spine-core';
+import spine4 from '../spine4/lib/spine-core';
+import '../spine4/lib/instantiated';
 import { ccclass, serializable, type } from '../core/data/decorators';
 import { legacyCC } from '../core/global-exports';
 import { Texture2D, Asset } from '../asset/assets';
 import { Node } from '../scene-graph';
+
+type SpineWasmUtilLike = {
+    querySpineSkeletonDataByUUID: (uuid: string) => spine.SkeletonData | null;
+    createSpineSkeletonDataWithJson: (json: string, atlasText: string, textureNames: string[], textureUUIDs: string[]) => spine.SkeletonData | null;
+    createStoreMemory: (byteSize: number) => number;
+    wasm: { HEAPU8: Uint8Array };
+    createSpineSkeletonDataWithBinary: (byteSize: number, atlasText: string, textureNames: string[], textureUUIDs: string[]) => spine.SkeletonData | null;
+    freeStoreMemory: () => void;
+    registerSpineSkeletonDataWithUUID: (data: spine.SkeletonData, uuid: string) => void;
+    destroySpineSkeletonDataWithUUID: (uuid: string) => void;
+};
+
+function extractSpineVersionFromJsonText (jsonText: string): string | undefined {
+    if (!jsonText) {
+        return undefined;
+    }
+
+    const match = /"spine"\s*:\s*"([^"]+)"/.exec(jsonText);
+    if (match && match[1]) {
+        return match[1];
+    }
+
+    return undefined;
+}
+
+function detectSpineVersion (skeletonJson: spine.SkeletonJson | null, nativeAsset?: ArrayBuffer): string | undefined {
+    const jsonVersion = (skeletonJson as any)?.skeleton?.spine as string | undefined;
+    if (jsonVersion) {
+        return jsonVersion;
+    }
+
+    if (skeletonJson) {
+        const fromJsonText = extractSpineVersionFromJsonText(JSON.stringify(skeletonJson));
+        if (fromJsonText) {
+            return fromJsonText;
+        }
+    }
+
+    if (nativeAsset && nativeAsset.byteLength > 0) {
+        try {
+            const bytes = new Uint8Array(nativeAsset);
+            const maxLen = Math.min(bytes.length, 2048);
+            let textHead = '';
+            for (let i = 0; i < maxLen; ++i) {
+                textHead += String.fromCharCode(bytes[i]);
+            }
+            const fromNativeText = extractSpineVersionFromJsonText(textHead);
+            if (fromNativeText) {
+                return fromNativeText;
+            }
+        } catch {
+            // Ignore parsing errors and fallback to default runtime.
+        }
+    }
+
+    return undefined;
+}
+
+function getSpineWasmUtilByVersion (version?: string): SpineWasmUtilLike {
+    const useSpine4 = !!version && version.startsWith('4.');
+    const runtime = useSpine4 ? spine4 : spine;
+    const wasmUtil = runtime?.wasmUtil as SpineWasmUtilLike | undefined;
+    if (wasmUtil) {
+        return wasmUtil;
+    }
+    const globalRuntimeName = useSpine4 ? 'spine4' : 'spine';
+    return (globalThis as Record<string, any>)[globalRuntimeName]?.wasmUtil as SpineWasmUtilLike;
+}
 /**
  * @en The skeleton data of spine.
  * @zh Spine 的骨骼数据。
@@ -160,7 +230,20 @@ export class SkeletonData extends Asset {
      */
     public createNode (callback: (err: Error|null, node: Node) => void): void {
         const node = new Node(this.name);
-        const skeleton = node.addComponent('cc.Skeleton') as Skeleton;
+        const spineVersion = detectSpineVersion(this._skeletonJson, this._nativeAsset);
+        let useSpine4 = !!spineVersion && spineVersion.startsWith('4.');
+        if (!spineVersion) {
+            const runtimeData = this.getRuntimeData(true);
+            const spine4Ctor = (spine4 as any).SkeletonData as (new (...args: any[]) => any) | undefined;
+            const spine3Ctor = (spine as any).SkeletonData as (new (...args: any[]) => any) | undefined;
+            if (spine4Ctor && runtimeData instanceof spine4Ctor) {
+                useSpine4 = true;
+            } else if (spine3Ctor && runtimeData instanceof spine3Ctor) {
+                useSpine4 = false;
+            }
+        }
+        const componentName = useSpine4 ? 'sp4.Skeleton' : 'cc.Skeleton';
+        const skeleton = node.addComponent(componentName) as Skeleton;
         skeleton.skeletonData = this;
 
         return callback(null, node);
@@ -208,8 +291,16 @@ export class SkeletonData extends Asset {
             return null;
         }
 
+        const spineVersion = detectSpineVersion(this._skeletonJson, this._nativeAsset);
+        const wasmUtil = getSpineWasmUtilByVersion(spineVersion);
+        if (!wasmUtil) {
+            if (!quiet) {
+                error(`${this.name} spine runtime wasm util is not ready!`);
+            }
+            return null;
+        }
         const uuid = this.mergedUUID();
-        const spData = spine.wasmUtil.querySpineSkeletonDataByUUID(uuid);
+        const spData = wasmUtil.querySpineSkeletonDataByUUID(uuid);
         if (spData) {
             this._skeletonCache = spData;
         } else {
@@ -220,17 +311,21 @@ export class SkeletonData extends Asset {
                 textureUUIDs.push(tex.uuid || tex.getId());
             }
             if (this._skeletonJson) {
-                this._skeletonCache = spine.wasmUtil.createSpineSkeletonDataWithJson(this.skeletonJsonStr, this._atlasText, this.textureNames, textureUUIDs);
-                spine.wasmUtil.registerSpineSkeletonDataWithUUID(this._skeletonCache, uuid);
+                this._skeletonCache = wasmUtil.createSpineSkeletonDataWithJson(this.skeletonJsonStr, this._atlasText, this.textureNames, textureUUIDs);
+                if (this._skeletonCache) {
+                    wasmUtil.registerSpineSkeletonDataWithUUID(this._skeletonCache, uuid);
+                }
             } else {
                 const rawData = new Uint8Array(this._nativeAsset);
                 const byteSize = rawData.length;
-                const ptr = spine.wasmUtil.createStoreMemory(byteSize);
-                const wasmMem = spine.wasmUtil.wasm.HEAPU8.subarray(ptr, ptr + byteSize);
+                const ptr = wasmUtil.createStoreMemory(byteSize);
+                const wasmMem = wasmUtil.wasm.HEAPU8.subarray(ptr, ptr + byteSize);
                 wasmMem.set(rawData);
-                this._skeletonCache = spine.wasmUtil.createSpineSkeletonDataWithBinary(byteSize, this._atlasText, this.textureNames, textureUUIDs);
-                spine.wasmUtil.registerSpineSkeletonDataWithUUID(this._skeletonCache, uuid);
-                spine.wasmUtil.freeStoreMemory();
+                this._skeletonCache = wasmUtil.createSpineSkeletonDataWithBinary(byteSize, this._atlasText, this.textureNames, textureUUIDs);
+                if (this._skeletonCache) {
+                    wasmUtil.registerSpineSkeletonDataWithUUID(this._skeletonCache, uuid);
+                }
+                wasmUtil.freeStoreMemory();
             }
         }
         return this._skeletonCache;
@@ -250,7 +345,11 @@ export class SkeletonData extends Asset {
             const skins = sd.skins;
             const enumDef: {[key: string]: number} = {};
             for (let i = 0; i < skins.length; i++) {
-                const name = skins[i].name;
+                const skin = skins[i];
+                if (!skin || !skin.name) {
+                    continue;
+                }
+                const name = skin.name;
                 enumDef[name] = i;
             }
             return this._skinsEnum = Enum(enumDef);
@@ -271,7 +370,11 @@ export class SkeletonData extends Asset {
             const enumDef: {[key: string]: number} = { '<None>': 0 };
             const anims = sd.animations;
             for (let i = 0; i < anims.length; i++) {
-                const name = anims[i].name;
+                const anim = anims[i];
+                if (!anim || !anim.name) {
+                    continue;
+                }
+                const name = anim.name;
                 enumDef[name] = i + 1;
             }
             return this._animsEnum = Enum(enumDef);
@@ -296,7 +399,9 @@ export class SkeletonData extends Asset {
      */
     public destroy (): boolean {
         SkeletonCache.sharedCache.destroyCachedAnimations(this._uuid);
-        spine.wasmUtil.destroySpineSkeletonDataWithUUID(this.mergedUUID());
+        const spineVersion = detectSpineVersion(this._skeletonJson, this._nativeAsset);
+        const wasmUtil = getSpineWasmUtilByVersion(spineVersion);
+        wasmUtil.destroySpineSkeletonDataWithUUID(this.mergedUUID());
         return super.destroy();
     }
 

@@ -27,8 +27,17 @@ import { game } from '../../game';
 import './spine-define'; // Make spine._overrideSpineDefine take effect.
 import { waitForSpineWasmInstantiation } from './spine-instantiate';
 
+let spineWasmInstantiationPromise: Promise<void> | null = null;
+function ensureSpineWasmInstantiation (): Promise<void> {
+    if (!spineWasmInstantiationPromise) {
+        spineWasmInstantiationPromise = waitForSpineWasmInstantiation();
+    }
+    return spineWasmInstantiationPromise;
+}
+
 if (!JSB && (!BUILD || !LOAD_SPINE_MANUALLY)) {
-    game.onPostInfrastructureInitDelegate.add(waitForSpineWasmInstantiation);
+    game.onPostInfrastructureInitDelegate.add(ensureSpineWasmInstantiation);
+    void ensureSpineWasmInstantiation();
 }
 
 export { waitForSpineWasmInstantiation };
