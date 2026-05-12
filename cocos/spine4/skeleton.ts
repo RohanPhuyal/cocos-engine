@@ -54,6 +54,67 @@ function isSkeletonDataValid (skeletonData: any): boolean {
         && !skeletonData.isEmpty();
 }
 
+function readSlotBlendMode (slotData: any): any {
+    if (!slotData) {
+        return null;
+    }
+    if (slotData.blendMode != null) {
+        return slotData.blendMode;
+    }
+    if (slotData.data && slotData.data.blendMode != null) {
+        return slotData.data.blendMode;
+    }
+    if (typeof slotData.getBlendMode === 'function') {
+        return slotData.getBlendMode();
+    }
+    return null;
+}
+
+function getRuntimeSlots (runtimeData: any): any[] {
+    const slots = runtimeData?.slots;
+    if (!slots) {
+        return [];
+    }
+    if (Array.isArray(slots)) {
+        return slots;
+    }
+    if (typeof slots.size === 'function' && typeof slots.get === 'function') {
+        const result: any[] = [];
+        const count = slots.size();
+        for (let i = 0; i < count; ++i) {
+            result.push(slots.get(i));
+        }
+        return result;
+    }
+    return [];
+}
+
+function hasScreenBlendMode (runtimeData: any): boolean {
+    const slots = getRuntimeSlots(runtimeData);
+    for (let i = 0; i < slots.length; ++i) {
+        const blendMode = readSlotBlendMode(slots[i]);
+        if (blendMode === spine.BlendMode.Screen || blendMode === 3 || blendMode === 'screen') {
+            return true;
+        }
+    }
+    return false;
+}
+
+function hasAtlasPmaFlag (skeletonData: any): boolean {
+    const pages = skeletonData?._atlasCache?.pages;
+    return Array.isArray(pages) && pages.some((p: any) => !!p?.pma);
+}
+
+function resolvePremultipliedAlpha (current: boolean, skeletonData: any, runtimeData: any): boolean {
+    const pages = skeletonData?._atlasCache?.pages;
+    const atlasHasPages = Array.isArray(pages) && pages.length > 0;
+    const atlasHasPma = hasAtlasPmaFlag(skeletonData);
+    if (atlasHasPages) {
+        return atlasHasPma;
+    }
+    return current;
+}
+
 const CachedFrameTime = 1 / 60;
 
 type TrackListener = (x: spine.TrackEntry) => void;
@@ -506,7 +567,9 @@ export class Skeleton extends UIRenderer {
     set premultipliedAlpha (v: boolean) {
         if (v !== this._premultipliedAlpha) {
             this._premultipliedAlpha = v;
-            this._instance!.setPremultipliedAlpha(v);
+            if (this._instance) {
+                this._instance.setPremultipliedAlpha(v);
+            }
             this._markForUpdateRenderData();
         }
     }
@@ -794,6 +857,10 @@ export class Skeleton extends UIRenderer {
         //this.setSkeletonData(data);
         this._runtimeData = skeletonData!.getRuntimeData();
         if (!this._runtimeData) return;
+        const wantPma = resolvePremultipliedAlpha(this._premultipliedAlpha, this._skeletonData, this._runtimeData);
+        if (wantPma !== this._premultipliedAlpha) {
+            this.premultipliedAlpha = wantPma;
+        }
         this.setSkeletonData(this._runtimeData);
         this._textures = skeletonData!.textures;
 
@@ -866,6 +933,12 @@ export class Skeleton extends UIRenderer {
                 this._skeleton = this._skeletonInfo.skeleton!;
             }
         } else {
+            if (!JSB && !this._instance) {
+                const instance = new spine.SkeletonInstance();
+                instance.dtRate = this._timeScale * timeScale;
+                instance.isCache = this.isAnimationCached();
+                this._instance = instance;
+            }
             this._skeleton = this._instance!.initSkeleton(skeletonData);
             this._state = this._instance!.getAnimationState();
             this._instance!.setPremultipliedAlpha(this._premultipliedAlpha);
@@ -1644,8 +1717,8 @@ export class Skeleton extends UIRenderer {
         this._cleanMaterialCache();
         this.destroyRenderData();
         if (!JSB) {
-            if (!this.isAnimationCached()) {
-                this._instance!.setUseTint(this._useTint);
+            if (!this.isAnimationCached() && this._instance) {
+                this._instance.setUseTint(this._useTint);
             }
         }
         const assembler = this._assembler;
@@ -1685,8 +1758,8 @@ export class Skeleton extends UIRenderer {
             }
             if (this.isAnimationCached()) {
                 warnID(16418);
-            } else if (!JSB) {
-                this._instance!.setDebugMode(true);
+            } else if (!JSB && this._instance) {
+                this._instance.setDebugMode(true);
             }
         } else if (this._debugRenderer) {
             this.node.off(NodeEventType.LAYER_CHANGED, this._applyLayer, this);

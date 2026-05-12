@@ -101,6 +101,58 @@ function getSpineWasmUtilByVersion (version?: string): SpineWasmUtilLike {
     const globalRuntimeName = useSpine3 ? 'spine' : 'spine4';
     return (globalThis as Record<string, any>)[globalRuntimeName]?.wasmUtil as SpineWasmUtilLike;
 }
+
+function getCollectionLength (collection: any): number {
+    if (!collection) {
+        return 0;
+    }
+    if (typeof collection.length === 'number') {
+        return collection.length;
+    }
+    if (typeof collection.size === 'function') {
+        return collection.size();
+    }
+    return 0;
+}
+
+function getCollectionItem (collection: any, index: number): any {
+    if (!collection) {
+        return null;
+    }
+    if (typeof collection.get === 'function') {
+        return collection.get(index);
+    }
+    return collection[index];
+}
+
+function getRuntimeItemName (item: any): string {
+    if (!item) {
+        return '';
+    }
+    if (item.name != null) {
+        const name = String(item.name);
+        if (name.length > 0 && name !== '[object Object]') {
+            return name;
+        }
+    }
+    if (typeof item.getName === 'function') {
+        const value = item.getName();
+        if (value != null) {
+            const name = String(value);
+            if (name.length > 0 && name !== '[object Object]') {
+                return name;
+            }
+        }
+    }
+    const dataName = item.data?.name;
+    if (dataName != null) {
+        const name = String(dataName);
+        if (name.length > 0 && name !== '[object Object]') {
+            return name;
+        }
+    }
+    return '';
+}
 /**
  * @en The skeleton data of spine.
  * @zh Spine 的骨骼数据。
@@ -218,6 +270,8 @@ export class SkeletonData extends Asset {
 
     private _skinsEnum: { [key: string]: number } | null = null;
     private _animsEnum: { [key: string]: number } | null = null;
+    private _skinsEnumVersion: '3' | '4' | null = null;
+    private _animsEnumVersion: '3' | '4' | null = null;
 
     constructor () {
         super();
@@ -254,10 +308,10 @@ export class SkeletonData extends Asset {
      */
     public reset (): void {
         this._skeletonCache = null;
-        if (EDITOR_NOT_IN_PREVIEW) {
-            this._skinsEnum = null;
-            this._animsEnum = null;
-        }
+        this._skinsEnum = null;
+        this._animsEnum = null;
+        this._skinsEnumVersion = null;
+        this._animsEnumVersion = null;
     }
     /**
      * @internal Since v3.7.2, this is an engine private function, only works in editor.
@@ -265,10 +319,119 @@ export class SkeletonData extends Asset {
      * @zh 重置皮肤和动画枚举。
      */
     public resetEnums (): void {
-        if (EDITOR_NOT_IN_PREVIEW) {
-            this._skinsEnum = null;
-            this._animsEnum = null;
+        this._skinsEnum = null;
+        this._animsEnum = null;
+        this._skinsEnumVersion = null;
+        this._animsEnumVersion = null;
+    }
+
+    private _getSpineMajorVersion (): '3' | '4' {
+        const version = detectSpineVersion(this._skeletonJson, this._nativeAsset);
+        if (version?.startsWith('3.')) {
+            return '3';
         }
+        if (version?.startsWith('4.')) {
+            return '4';
+        }
+        const runtimeData = this.getRuntimeData(true);
+        const spine3Ctor = (spine3 as any).SkeletonData as (new (...args: any[]) => any) | undefined;
+        if (spine3Ctor && runtimeData instanceof spine3Ctor) {
+            return '3';
+        }
+        return '4';
+    }
+
+    private _buildSkinsEnum (): { [key: string]: number } | null {
+        const sd = this.getRuntimeData(true);
+        if (!sd) {
+            return null;
+        }
+        const skins = sd.skins;
+        const enumDef: {[key: string]: number} = {};
+        const skinCount = getCollectionLength(skins);
+        for (let i = 0; i < skinCount; i++) {
+            const skin = getCollectionItem(skins, i);
+            const name = getRuntimeItemName(skin);
+            if (!name) {
+                continue;
+            }
+            enumDef[name] = i;
+        }
+        if (Object.keys(enumDef).length === 0) {
+            return null;
+        }
+        return Enum(enumDef);
+    }
+
+    private _buildAnimsEnum (): { [key: string]: number } | null {
+        const sd = this.getRuntimeData(true);
+        if (!sd) {
+            return null;
+        }
+        const enumDef: {[key: string]: number} = { '<None>': 0 };
+        const anims = sd.animations;
+        const animCount = getCollectionLength(anims);
+        for (let i = 0; i < animCount; i++) {
+            const anim = getCollectionItem(anims, i);
+            const name = getRuntimeItemName(anim);
+            if (!name) {
+                continue;
+            }
+            enumDef[name] = i + 1;
+        }
+        return Enum(enumDef);
+    }
+
+    public getSkinsEnumForSpine3 (): { [key: string]: number } | null {
+        if (this._skinsEnum && this._skinsEnumVersion === '3') {
+            return this._skinsEnum;
+        }
+        const enumDef = this._buildSkinsEnum();
+        if (!enumDef) {
+            return null;
+        }
+        this._skinsEnum = enumDef;
+        this._skinsEnumVersion = '3';
+        return this._skinsEnum;
+    }
+
+    public getSkinsEnumForSpine4 (): { [key: string]: number } | null {
+        if (this._skinsEnum && this._skinsEnumVersion === '4') {
+            return this._skinsEnum;
+        }
+        const enumDef = this._buildSkinsEnum();
+        if (!enumDef) {
+            return null;
+        }
+        this._skinsEnum = enumDef;
+        this._skinsEnumVersion = '4';
+        return this._skinsEnum;
+    }
+
+    public getAnimsEnumForSpine3 (): { [key: string]: number } | null {
+        if (this._animsEnum && this._animsEnumVersion === '3' && Object.keys(this._animsEnum).length > 1) {
+            return this._animsEnum;
+        }
+        const enumDef = this._buildAnimsEnum();
+        if (!enumDef) {
+            return null;
+        }
+        this._animsEnum = enumDef;
+        this._animsEnumVersion = '3';
+        return this._animsEnum;
+    }
+
+    public getAnimsEnumForSpine4 (): { [key: string]: number } | null {
+        if (this._animsEnum && this._animsEnumVersion === '4' && Object.keys(this._animsEnum).length > 1) {
+            return this._animsEnum;
+        }
+        const enumDef = this._buildAnimsEnum();
+        if (!enumDef) {
+            return null;
+        }
+        this._animsEnum = enumDef;
+        this._animsEnumVersion = '4';
+        return this._animsEnum;
     }
 
     /**
@@ -337,24 +500,8 @@ export class SkeletonData extends Asset {
     public getSkinsEnum (): {
         [key: string]: number;
     } | null {
-        if (this._skinsEnum /* && Object.keys(this._skinsEnum).length > 0 */) {
-            return this._skinsEnum;
-        }
-        const sd = this.getRuntimeData(true);
-        if (sd) {
-            const skins = sd.skins;
-            const enumDef: {[key: string]: number} = {};
-            for (let i = 0; i < skins.length; i++) {
-                const skin = skins[i];
-                if (!skin || !skin.name) {
-                    continue;
-                }
-                const name = skin.name;
-                enumDef[name] = i;
-            }
-            return this._skinsEnum = Enum(enumDef);
-        }
-        return null;
+        const majorVersion = this._getSpineMajorVersion();
+        return majorVersion === '3' ? this.getSkinsEnumForSpine3() : this.getSkinsEnumForSpine4();
     }
     /**
      * @internal Since v3.7.2, this is an engine private function, it only works in editor.
@@ -362,24 +509,8 @@ export class SkeletonData extends Asset {
     public getAnimsEnum (): {
         [key: string]: number;
     } | null {
-        if (this._animsEnum && Object.keys(this._animsEnum).length > 1) {
-            return this._animsEnum;
-        }
-        const sd = this.getRuntimeData(true);
-        if (sd) {
-            const enumDef: {[key: string]: number} = { '<None>': 0 };
-            const anims = sd.animations;
-            for (let i = 0; i < anims.length; i++) {
-                const anim = anims[i];
-                if (!anim || !anim.name) {
-                    continue;
-                }
-                const name = anim.name;
-                enumDef[name] = i + 1;
-            }
-            return this._animsEnum = Enum(enumDef);
-        }
-        return null;
+        const majorVersion = this._getSpineMajorVersion();
+        return majorVersion === '3' ? this.getAnimsEnumForSpine3() : this.getAnimsEnumForSpine4();
     }
 
     private mergedUUID (): string {
@@ -414,4 +545,4 @@ export class SkeletonData extends Asset {
     }
 }
 
-legacyCC.internal.SpineSkeletonData = SkeletonData;
+(legacyCC.internal as any).Spine4SkeletonData = SkeletonData;
