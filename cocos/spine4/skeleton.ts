@@ -199,7 +199,7 @@ export const timeScale = 1.0;
  * @en Enum for animation cache mode type.
  * @zh Spine 动画缓存类型。
  */
-export enum SpineAnimationCacheMode {
+export enum Spine4AnimationCacheMode {
     /**
      * @en Unset mode.
      * @zh 未设置模式。
@@ -221,11 +221,13 @@ export enum SpineAnimationCacheMode {
      */
     PRIVATE_CACHE = 2,
 }
-ccenum(SpineAnimationCacheMode);
+ccenum(Spine4AnimationCacheMode);
+export type SpineAnimationCacheMode = Spine4AnimationCacheMode;
+export const SpineAnimationCacheMode = Spine4AnimationCacheMode;
 
 // To keep the compatibility, don't use it internally, otherwise, enum value may be inlined to wrong value.
 // Use AnimationCacheMode instead.
-export const AnimationCacheMode = SpineAnimationCacheMode;
+export const AnimationCacheMode = Spine4AnimationCacheMode;
 
 interface AnimationItem {
     animationName: string;
@@ -236,29 +238,35 @@ interface AnimationItem {
 /**
  * @engineInternal
  */
-export enum DefaultSkinsEnum {
+export enum Spine4DefaultSkinsEnum {
     default = 0,
 }
-ccenum(DefaultSkinsEnum);
+ccenum(Spine4DefaultSkinsEnum);
+export type DefaultSkinsEnum = Spine4DefaultSkinsEnum;
+export const DefaultSkinsEnum = Spine4DefaultSkinsEnum;
 
 /**
  * @engineInternal
  */
-export enum SpineDefaultAnimsEnum {
+export enum Spine4DefaultAnimsEnum {
     '<None>' = 0
 }
-ccenum(SpineDefaultAnimsEnum);
+ccenum(Spine4DefaultAnimsEnum);
+export type SpineDefaultAnimsEnum = Spine4DefaultAnimsEnum;
+export const SpineDefaultAnimsEnum = Spine4DefaultAnimsEnum;
 // To keep the compatibility, don't use it internally, otherwise, enum value may be inlined to wrong value.
 // Use SpineDefaultAnimsEnum instead.
-export const DefaultAnimsEnum = SpineDefaultAnimsEnum;
+export const DefaultAnimsEnum = Spine4DefaultAnimsEnum;
 
 /**
  * @engineInternal
  */
-export enum SpineMaterialType {
+export enum Spine4MaterialType {
     COLORED_TEXTURED = 0,
     TWO_COLORED = 1,
 }
+export type SpineMaterialType = Spine4MaterialType;
+export const SpineMaterialType = Spine4MaterialType;
 
 interface AnimationItem {
     animationName: string;

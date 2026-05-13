@@ -63,20 +63,22 @@ export const VertexEffectDelegate = spine.VertexEffectDelegate;
  * @zh
  * Attachment 类型枚举。类型包括 REGION，BOUNDING_BOX，MESH，SKINNED_MESH。
  */
-export enum ATTACHMENT_TYPE {
+export enum Spine4AttachmentType {
     REGION = 0,
     BOUNDING_BOX = 1,
     MESH = 2,
     SKINNED_MESH = 3
 }
-ccenum(ATTACHMENT_TYPE);
+ccenum(Spine4AttachmentType);
+export type ATTACHMENT_TYPE = Spine4AttachmentType;
+export const ATTACHMENT_TYPE = Spine4AttachmentType;
 
 /**
  * @en The event type of spine skeleton animation.
  * @zh 骨骼动画事件类型。
  * @enum AnimationEventType
  */
-export enum AnimationEventType {
+export enum Spine4AnimationEventType {
     /**
      * @en The play spine skeleton animation start type.
      * @zh 开始播放骨骼动画。
@@ -112,7 +114,9 @@ export enum AnimationEventType {
      */
     EVENT = 5
 }
-ccenum(AnimationEventType);
+ccenum(Spine4AnimationEventType);
+export type AnimationEventType = Spine4AnimationEventType;
+export const AnimationEventType = Spine4AnimationEventType;
 
 legacyCC.internal.Spine4AnimationEventType = AnimationEventType;
 legacyCC.internal.SPINE4_VERSION = SPINE_VERSION;
