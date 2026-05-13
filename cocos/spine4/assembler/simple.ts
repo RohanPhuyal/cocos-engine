@@ -60,6 +60,8 @@ let _useTint = false;
 
 const _byteStrideOneColor = getAttributeStride(vfmtPosUvColor4B);
 const _byteStrideTwoColor = getAttributeStride(vfmtPosUvTwoColor4B);
+const SPINE4_BUFFER_ID = Number.parseInt('SPINE4', 36);
+const SPINE4_TINT_BUFFER_ID = Number.parseInt('SPINE4TINT', 36);
 
 const DEBUG_TYPE_REGION = 0;
 const DEBUG_TYPE_MESH = 1;
@@ -102,11 +104,11 @@ class Simple implements IAssembler {
             if (useTint) {
                 accessor = _tintAccessor = new StaticVBAccessor(device, attributes, this.vCount);
                 // Register to batcher so that batcher can upload buffers after batching process
-                batcher.registerBufferAccessor(Number.parseInt('SPINETINT', 36), _tintAccessor);
+                batcher.registerBufferAccessor(SPINE4_TINT_BUFFER_ID, _tintAccessor);
             } else {
                 accessor = _accessor = new StaticVBAccessor(device, attributes, this.vCount);
                 // Register to batcher so that batcher can upload buffers after batching process
-                batcher.registerBufferAccessor(Number.parseInt('SPINE', 36), _accessor);
+                batcher.registerBufferAccessor(SPINE4_BUFFER_ID, _accessor);
             }
         }
         return accessor;

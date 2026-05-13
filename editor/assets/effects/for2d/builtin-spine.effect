@@ -77,10 +77,16 @@ CCProgram sprite-fs %{
       vec4 texColor = vec4(1, 1, 1, 1);
 
       texColor *= texture(cc_spriteTexture, uv0);
+      #if PREMULTIPLY_TEXTURE
+        texColor.rgb *= texColor.a;
+      #endif
  	    o.a = texColor.a * v_light.a;
       o.rgb = ((texColor.a - 1.0) * v_dark.a + 1.0 - texColor.rgb) * v_dark.rgb + texColor.rgb * v_light.rgb;
     #else
       o *= texture(cc_spriteTexture, uv0);
+      #if PREMULTIPLY_TEXTURE
+        o.rgb *= o.a;
+      #endif
       o *= v_light;
     #endif
 

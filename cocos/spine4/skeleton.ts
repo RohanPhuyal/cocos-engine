@@ -119,80 +119,19 @@ function hasScreenBlendModeInSkeletonJson (skeletonData: any): boolean {
     return false;
 }
 
-const premultipliedTextureCache = new WeakSet<Texture2D>();
-
-function tryPremultiplyTexturePixels (texture: Texture2D): boolean {
-    if (premultipliedTextureCache.has(texture)) {
-        return true;
-    }
-
-    const imageAsset = (texture as any).image;
-    if (!imageAsset || imageAsset.isCompressed) {
-        return false;
-    }
-
-    const width = imageAsset.width | 0;
-    const height = imageAsset.height | 0;
-    if (width <= 0 || height <= 0) {
-        return false;
-    }
-
-    let source = imageAsset.data as any;
-    if (!source && typeof (texture as any).getHtmlElementObj === 'function') {
-        source = (texture as any).getHtmlElementObj();
-    }
-    if (!source) {
-        return false;
-    }
-
-    const doc = (globalThis as any).document;
-    if (!doc || typeof doc.createElement !== 'function') {
-        return false;
-    }
-    const canvas = doc.createElement('canvas') as HTMLCanvasElement;
-    canvas.width = width;
-    canvas.height = height;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) {
-        return false;
-    }
-
-    if (source instanceof HTMLCanvasElement || source instanceof HTMLImageElement
-        || (typeof ImageBitmap !== 'undefined' && source instanceof ImageBitmap)) {
-        ctx.drawImage(source, 0, 0, width, height);
-    } else if (ArrayBuffer.isView(source)) {
-        if (source.byteLength < width * height * 4) {
-            return false;
+function getMethodIfCallable (obj: any, methodName: string): ((...args: any[]) => any) | null {
+    let proto = obj;
+    while (proto) {
+        const desc = Object.getOwnPropertyDescriptor(proto, methodName);
+        if (desc) {
+            return typeof desc.value === 'function' ? desc.value : null;
         }
-        const rgba = source instanceof Uint8ClampedArray
-            ? source
-            : new Uint8ClampedArray(source.buffer, source.byteOffset, width * height * 4);
-        const img = new ImageData(new Uint8ClampedArray(rgba), width, height);
-        ctx.putImageData(img, 0, 0);
-    } else {
-        return false;
+        proto = Object.getPrototypeOf(proto);
     }
-
-    const imgData = ctx.getImageData(0, 0, width, height);
-    const pixels = imgData.data;
-    for (let i = 0; i < pixels.length; i += 4) {
-        const a = pixels[i + 3];
-        if (a === 255) {
-            continue;
-        }
-        pixels[i] = (pixels[i] * a + 127) / 255;
-        pixels[i + 1] = (pixels[i + 1] * a + 127) / 255;
-        pixels[i + 2] = (pixels[i + 2] * a + 127) / 255;
-    }
-    ctx.putImageData(imgData, 0, 0);
-
-    imageAsset.reset(canvas as any);
-    texture.updateImage();
-    premultipliedTextureCache.add(texture);
-    return true;
+    return null;
 }
 
-function ensureTexturesPremultiplied (skeletonData: any): boolean {
+function ensureTexturesPremultiplied (skeletonData: any, useShaderFallback?: { value: boolean }): boolean {
     const textures = skeletonData?.textures;
     if (!Array.isArray(textures) || textures.length === 0) {
         return false;
@@ -205,31 +144,41 @@ function ensureTexturesPremultiplied (skeletonData: any): boolean {
         }
         hasValidTexture = true;
         let hasPma = false;
-        if (typeof texture.hasPremultipliedAlpha === 'function') {
-            hasPma = !!texture.hasPremultipliedAlpha();
+        const hasPremultipliedAlpha = getMethodIfCallable(texture, 'hasPremultipliedAlpha');
+        const setPremultiplyAlpha = getMethodIfCallable(texture, 'setPremultiplyAlpha');
+        if (hasPremultipliedAlpha) {
+            hasPma = !!hasPremultipliedAlpha.call(texture);
         }
-        if (!hasPma && typeof texture.setPremultiplyAlpha === 'function') {
-            texture.setPremultiplyAlpha(true);
-            if (typeof texture.hasPremultipliedAlpha === 'function') {
-                hasPma = !!texture.hasPremultipliedAlpha();
+        if (!hasPma && setPremultiplyAlpha) {
+            setPremultiplyAlpha.call(texture, true);
+            if (hasPremultipliedAlpha) {
+                hasPma = !!hasPremultipliedAlpha.call(texture);
             }
         }
         if (!hasPma) {
-            hasPma = tryPremultiplyTexturePixels(texture);
-        }
-        if (!hasPma) {
-            return false;
+            if (useShaderFallback) {
+                useShaderFallback.value = true;
+            }
+            // Texture PMA APIs are removed in Creator 3.8 runtime.
+            // Use shader-time premultiply as the fallback to stay non-destructive.
+            hasPma = true;
         }
     }
     return hasValidTexture;
 }
 
-function resolvePremultipliedAlpha (current: boolean, skeletonData: any, runtimeData: any): boolean {
+function resolvePremultipliedAlpha (current: boolean, skeletonData: any, runtimeData: any, useShaderFallback?: { value: boolean }): boolean {
     if (hasAtlasPmaFlag(skeletonData)) {
+        if (useShaderFallback) {
+            useShaderFallback.value = false;
+        }
         return true;
     }
     if (hasScreenBlendMode(runtimeData) || hasScreenBlendModeInSkeletonJson(skeletonData)) {
-        return ensureTexturesPremultiplied(skeletonData);
+        return ensureTexturesPremultiplied(skeletonData, useShaderFallback);
+    }
+    if (useShaderFallback) {
+        useShaderFallback.value = false;
     }
     return false;
 }
@@ -427,6 +376,8 @@ export class Skeleton extends UIRenderer {
     protected _debugSlots = false;
     @serializable
     protected _enableBatch = false;
+    @serializable
+    protected _premultiplyTextureInShader = false;
 
     protected _runtimeData: spine.SkeletonData | null = null;
     public _skeleton: spine.Skeleton = null!;
@@ -978,7 +929,12 @@ export class Skeleton extends UIRenderer {
         if (!this._runtimeData) {
             return;
         }
-        const wantPma = resolvePremultipliedAlpha(this._premultipliedAlpha, this._skeletonData, this._runtimeData);
+        const shaderFallback = { value: false };
+        const wantPma = resolvePremultipliedAlpha(this._premultipliedAlpha, this._skeletonData, this._runtimeData, shaderFallback);
+        if (this._premultiplyTextureInShader !== shaderFallback.value) {
+            this._premultiplyTextureInShader = shaderFallback.value;
+            this._cleanMaterialCache();
+        }
         if (wantPma !== this._premultipliedAlpha) {
             this.premultipliedAlpha = wantPma;
         }
@@ -1459,7 +1415,7 @@ export class Skeleton extends UIRenderer {
      * @engineInternal
      */
     public getMaterialForBlendAndTint (src: BlendFactor, dst: BlendFactor, type: SpineMaterialType): MaterialInstance {
-        const key = `${type}/${src}/${dst}`;
+        const key = `${type}/${src}/${dst}/${this._premultiplyTextureInShader ? 1 : 0}`;
         let inst = this._materialCache[key];
         if (inst) {
             return inst;
@@ -1494,7 +1450,11 @@ export class Skeleton extends UIRenderer {
             useTwoColor = true;
         }
         const useLocal = !this._enableBatch;
-        inst.recompileShaders({ TWO_COLORED: useTwoColor, USE_LOCAL: useLocal });
+        inst.recompileShaders({
+            TWO_COLORED: useTwoColor,
+            USE_LOCAL: useLocal,
+            PREMULTIPLY_TEXTURE: this._premultiplyTextureInShader,
+        });
         return inst;
     }
 
