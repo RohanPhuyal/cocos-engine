@@ -139,6 +139,12 @@ function resolvePremultipliedAlpha (current: boolean, skeletonData: SkeletonData
     return current;
 }
 
+function shouldSkipPromotionInPreviewNode (node: Node): boolean {
+    // Creator's asset preview uses a transient helper node named "Spine".
+    // Promoting that node to sp4.Skeleton breaks the preview controller's component reference.
+    return node.name === 'Spine';
+}
+
 const CachedFrameTime = 1 / 60;
 
 type TrackListener = (x: spine.TrackEntry) => void;
@@ -489,6 +495,9 @@ export class Skeleton extends UIRenderer {
             return false;
         }
         const node = this.node;
+        if (shouldSkipPromotionInPreviewNode(node)) {
+            return false;
+        }
         if (node.getComponent('sp4.Skeleton')) {
             return true;
         }
@@ -971,7 +980,9 @@ export class Skeleton extends UIRenderer {
         //if (!data) return;
         //this.setSkeletonData(data);
         this._runtimeData = skeletonData!.getRuntimeData();
-        if (!this._runtimeData) return;
+        if (!this._runtimeData) {
+            return;
+        }
         this._switchRuntimeByRuntimeData(this._runtimeData);
         const wantPma = resolvePremultipliedAlpha(this._premultipliedAlpha, this._skeletonData, this._runtimeData);
         if (wantPma !== this._premultipliedAlpha) {

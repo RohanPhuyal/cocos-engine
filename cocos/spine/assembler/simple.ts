@@ -32,6 +32,7 @@ import { legacyCC } from '../../core/global-exports';
 import { RenderData } from '../../2d/renderer/render-data';
 import { director } from '../../game';
 import spine from '../lib/spine-core';
+import spine4 from '../../spine4/lib/spine-core';
 import { Color, EPSILON, Vec3 } from '../../core';
 import type { MaterialInstance } from '../../render-scene';
 import type { IBatcher } from '../../2d/renderer/i-batcher';
@@ -177,7 +178,12 @@ function realTimeTraverse (comp: Skeleton): void {
     const vPtr: number = model.vPtr;
     const iPtr: number = model.iPtr;
     const ibuf = rd.indices;
-    const HEAPU8: Uint8Array = spine.wasmUtil.wasm.HEAPU8;
+    const runtimeSpine = ((comp as any)._runtimeSpine || spine) as typeof spine | typeof spine4;
+    const wasmUtil = runtimeSpine.wasmUtil || spine.wasmUtil;
+    const HEAPU8: Uint8Array | undefined = wasmUtil?.wasm?.HEAPU8;
+    if (!HEAPU8) {
+        return;
+    }
 
     comp._vBuffer?.set(HEAPU8.subarray(vPtr, vPtr + comp._vLength), 0);
     comp._iBuffer?.set(HEAPU8.subarray(iPtr, iPtr + comp._iLength), 0);

@@ -856,7 +856,9 @@ export class Skeleton extends UIRenderer {
         //if (!data) return;
         //this.setSkeletonData(data);
         this._runtimeData = skeletonData!.getRuntimeData();
-        if (!this._runtimeData) return;
+        if (!this._runtimeData) {
+            return;
+        }
         const wantPma = resolvePremultipliedAlpha(this._premultipliedAlpha, this._skeletonData, this._runtimeData);
         if (wantPma !== this._premultipliedAlpha) {
             this.premultipliedAlpha = wantPma;
