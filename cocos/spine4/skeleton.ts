@@ -105,14 +105,133 @@ function hasAtlasPmaFlag (skeletonData: any): boolean {
     return Array.isArray(pages) && pages.some((p: any) => !!p?.pma);
 }
 
-function resolvePremultipliedAlpha (current: boolean, skeletonData: any, runtimeData: any): boolean {
-    const pages = skeletonData?._atlasCache?.pages;
-    const atlasHasPages = Array.isArray(pages) && pages.length > 0;
-    const atlasHasPma = hasAtlasPmaFlag(skeletonData);
-    if (atlasHasPages) {
-        return atlasHasPma;
+function hasScreenBlendModeInSkeletonJson (skeletonData: any): boolean {
+    const slots = skeletonData?._skeletonJson?.slots;
+    if (!Array.isArray(slots)) {
+        return false;
     }
-    return current;
+    for (let i = 0; i < slots.length; ++i) {
+        const blendMode = slots[i]?.blend;
+        if (blendMode === 'screen' || blendMode === 'Screen' || blendMode === 3) {
+            return true;
+        }
+    }
+    return false;
+}
+
+const premultipliedTextureCache = new WeakSet<Texture2D>();
+
+function tryPremultiplyTexturePixels (texture: Texture2D): boolean {
+    if (premultipliedTextureCache.has(texture)) {
+        return true;
+    }
+
+    const imageAsset = (texture as any).image;
+    if (!imageAsset || imageAsset.isCompressed) {
+        return false;
+    }
+
+    const width = imageAsset.width | 0;
+    const height = imageAsset.height | 0;
+    if (width <= 0 || height <= 0) {
+        return false;
+    }
+
+    let source = imageAsset.data as any;
+    if (!source && typeof (texture as any).getHtmlElementObj === 'function') {
+        source = (texture as any).getHtmlElementObj();
+    }
+    if (!source) {
+        return false;
+    }
+
+    const doc = (globalThis as any).document;
+    if (!doc || typeof doc.createElement !== 'function') {
+        return false;
+    }
+    const canvas = doc.createElement('canvas') as HTMLCanvasElement;
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) {
+        return false;
+    }
+
+    if (source instanceof HTMLCanvasElement || source instanceof HTMLImageElement
+        || (typeof ImageBitmap !== 'undefined' && source instanceof ImageBitmap)) {
+        ctx.drawImage(source, 0, 0, width, height);
+    } else if (ArrayBuffer.isView(source)) {
+        if (source.byteLength < width * height * 4) {
+            return false;
+        }
+        const rgba = source instanceof Uint8ClampedArray
+            ? source
+            : new Uint8ClampedArray(source.buffer, source.byteOffset, width * height * 4);
+        const img = new ImageData(new Uint8ClampedArray(rgba), width, height);
+        ctx.putImageData(img, 0, 0);
+    } else {
+        return false;
+    }
+
+    const imgData = ctx.getImageData(0, 0, width, height);
+    const pixels = imgData.data;
+    for (let i = 0; i < pixels.length; i += 4) {
+        const a = pixels[i + 3];
+        if (a === 255) {
+            continue;
+        }
+        pixels[i] = (pixels[i] * a + 127) / 255;
+        pixels[i + 1] = (pixels[i + 1] * a + 127) / 255;
+        pixels[i + 2] = (pixels[i + 2] * a + 127) / 255;
+    }
+    ctx.putImageData(imgData, 0, 0);
+
+    imageAsset.reset(canvas as any);
+    texture.updateImage();
+    premultipliedTextureCache.add(texture);
+    return true;
+}
+
+function ensureTexturesPremultiplied (skeletonData: any): boolean {
+    const textures = skeletonData?.textures;
+    if (!Array.isArray(textures) || textures.length === 0) {
+        return false;
+    }
+    let hasValidTexture = false;
+    for (let i = 0; i < textures.length; ++i) {
+        const texture = textures[i];
+        if (!texture) {
+            continue;
+        }
+        hasValidTexture = true;
+        let hasPma = false;
+        if (typeof texture.hasPremultipliedAlpha === 'function') {
+            hasPma = !!texture.hasPremultipliedAlpha();
+        }
+        if (!hasPma && typeof texture.setPremultiplyAlpha === 'function') {
+            texture.setPremultiplyAlpha(true);
+            if (typeof texture.hasPremultipliedAlpha === 'function') {
+                hasPma = !!texture.hasPremultipliedAlpha();
+            }
+        }
+        if (!hasPma) {
+            hasPma = tryPremultiplyTexturePixels(texture);
+        }
+        if (!hasPma) {
+            return false;
+        }
+    }
+    return hasValidTexture;
+}
+
+function resolvePremultipliedAlpha (current: boolean, skeletonData: any, runtimeData: any): boolean {
+    if (hasAtlasPmaFlag(skeletonData)) {
+        return true;
+    }
+    if (hasScreenBlendMode(runtimeData) || hasScreenBlendModeInSkeletonJson(skeletonData)) {
+        return ensureTexturesPremultiplied(skeletonData);
+    }
+    return false;
 }
 
 const CachedFrameTime = 1 / 60;
