@@ -133,6 +133,96 @@ New shader-level PMA fallback support:
   - Scene view
   - Browser preview (`http://localhost:7456/`)
 
+## Build Guide (Editor + Native + Simulator)
+
+### Windows Simulator Build Verification (Current Branch)
+- No additional source changes are required specifically for Windows simulator build.
+- Dual runtime flags are wired in simulator CMake:
+  - `USE_SPINE_DUAL_RUNTIME=ON`
+  - `USE_SPINE_3_8=ON`
+  - `USE_SPINE4=ON`
+- Windows simulator target and sources are present:
+  - `SimulatorApp-Win32`
+  - `proj.win32/*`
+- Existing Windows-specific caveat still applies:
+  - CMake pre-build uses `create_symlink` for `jsb-adapter/res/src`.
+  - On Windows, enable Developer Mode or run with elevated privileges if symlink creation fails.
+
+### 1) Build Engine JS/Editor Runtime (macOS + Windows)
+
+From repo root:
+
+```bash
+npm install
+npm run build
+```
+
+For larger dev builds:
+
+```bash
+NODE_OPTIONS=--max-old-space-size=8192 npm run build:dev
+```
+
+### 2) Build Native Engine Library Only (macOS)
+
+From repo root:
+
+```bash
+cmake -S native -B native/build-mac -G Xcode -DUSE_SPINE=ON -DUSE_SPINE_DUAL_RUNTIME=ON -DUSE_SPINE_3_8=ON -DUSE_SPINE_4_2=OFF -DUSE_SPINE4=ON
+cmake --build native/build-mac --config Release --target cocos_engine
+```
+
+### 3) Build Native Engine Library Only (Windows)
+
+From repo root:
+
+```powershell
+cmake -S native -B native/build-win64 -G "Visual Studio 17 2022" -A x64 -DUSE_SPINE=ON -DUSE_SPINE_DUAL_RUNTIME=ON -DUSE_SPINE_3_8=ON -DUSE_SPINE_4_2=OFF -DUSE_SPINE4=ON
+cmake --build native/build-win64 --config Release --target cocos_engine
+```
+
+### 4) Build Simulator (macOS)
+
+From `native/`:
+
+```bash
+npm install
+npx gulp gen-simulator-release
+```
+
+Generated app:
+
+```bash
+native/simulator/Release/SimulatorApp-Mac.app
+```
+
+Optional architecture override:
+
+```bash
+ARCH=arm64 npx gulp gen-simulator-release
+```
+
+### 5) Build Simulator (Windows)
+
+From `native/`:
+
+```powershell
+npm install
+npx gulp gen-simulator-release
+```
+
+Generated executable:
+
+```powershell
+native/simulator/Release/SimulatorApp-Win32.exe
+```
+
+Optional runtime selection:
+
+```powershell
+$env:SPINE_VERSION="both"; npx gulp gen-simulator-release
+```
+
 ---
 
 ## Chat Summary (Concise)
@@ -140,4 +230,3 @@ New shader-level PMA fallback support:
 - After preview recovery, we ported the 2.8 PMA/screen blend behavior to 3.8, then adjusted for 3.8 API removals.
 - We fixed mixed-runtime rendering conflict by splitting static buffer accessor IDs.
 - Finally, we introduced shader-time PMA fallback to better match 2.8 blending appearance while keeping source textures untouched.
-
