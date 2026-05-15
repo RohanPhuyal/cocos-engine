@@ -24,10 +24,9 @@ This document summarizes the Spine 3.x / 4.x integration, preview, PMA, and blen
 - `c0954376ea` `preview working`
 - `ae421a3825` `fix: spine 4.x preview in inspector`
 - `4fa073f2c6` `fix: strict 2.8-style spine screen blend PMA behavior`
-- Current pending working-tree changes (not yet in a commit before this doc):
-  - mixed 3.x/4.x batch-buffer separation
-  - non-destructive shader PMA fallback path
-  - spine effect update for PMA fallback define
+- `02998c42d3` `Fix Spine 3.x/4.x native rendering and blend/PMA compatibility`
+- `97d744e2a5` `Remove temporary Spine debug tracing logs`
+- `0d8f01434b` `docs: add editor/native/simulator build instructions for macOS and Windows`
 
 ---
 
@@ -91,6 +90,43 @@ New shader-level PMA fallback support:
   - TWO_COLORED path: `texColor.rgb *= texColor.a`
   - normal path: `o.rgb *= o.a`
 - Used only when runtime sets shader define; non-destructive to original source textures.
+
+### 8) `platforms/native/engine/jsb-spine-skeleton.js`
+Native Spine3 JSB updates:
+- Added PMA resolution helpers for parity with web path:
+  - `readSlotBlendMode(...)`
+  - `getRuntimeSlots(...)`
+  - `hasScreenBlendMode(...)`
+  - `hasAtlasPmaFlag(...)`
+  - `hasScreenBlendModeInSkeletonJson(...)`
+  - `getMethodIfCallable(...)`
+  - `ensureTexturesPremultiplied(...)`
+  - `resolvePremultipliedAlpha(...)`
+- Updated `_updateSkeletonData()` PMA decision path to avoid forcing incorrect PMA.
+
+### 9) `platforms/native/engine/jsb-spine4-skeleton.js` and `platforms/native/engine/index.js`
+Native Spine4 JSB lane integration and fixes:
+- Added and wired dedicated Spine4 JSB adapter module.
+- Fixed native init/retain/update flow to avoid null-path crashes.
+- Added robust blend-mode handling guard where `spine.BlendMode` may be unavailable.
+- Applied PMA decision behavior matching web logic (only promote to PMA when data/textures support it).
+- Removed temporary debugging trace logs after validation.
+
+### 10) Native C++ / Build Integration (Spine4 lane)
+Key files:
+- `native/CMakeLists.txt`
+- `native/cocos/bindings/manual/jsb_module_register.cpp`
+- `native/cocos/bindings/manual/jsb_spine4_manual.cpp`
+- `native/tools/swig-config/spine4.i`
+- `native/cocos/editor-support/spine4/*`
+- `native/cocos/editor-support/spine4-creator-support/*`
+- `native/tools/simulator/frameworks/runtime-src/CMakeLists.txt`
+- `native/gulpfile.js`
+
+Summary:
+- Added/updated duplicated Spine4 native runtime lane and bindings generation/build integration.
+- Hooked simulator build options for dual runtime (3.8 + 4.2 lane via `spine4` namespace).
+- Kept Windows simulator wiring intact (`proj.win32`, `SimulatorApp-Win32`, Windows-specific CMake branches).
 
 ---
 
