@@ -116,20 +116,13 @@ const cacheManager = require('./jsb-cache-manager');
 
         const uuid = this.mergedUUID();
         this._nativeUuid = uuid;
-        try {
-            console.log(`[spine4][jsb] init enter asset="${this.name ?? ''}" uuid="${uuid ?? ''}" atlasLen=${(this.atlasText || '').length} textures=${this.textures?.length ?? 0} textureNames=${this.textureNames?.length ?? 0}`);
-        } catch (e) {
-            // ignore log errors
-        }
         if (!uuid) {
-            console.error('[spine4][jsb] init abort: empty merged uuid');
             cc.errorID(7504);
             return;
         }
 
         const atlasText = this.atlasText;
         if (!atlasText) {
-            console.error(`[spine4][jsb] init abort: empty atlas text for asset="${this.name ?? ''}"`);
             cc.errorID(7508, this.name);
             return;
         }
@@ -137,7 +130,6 @@ const cacheManager = require('./jsb-cache-manager');
         const textures = this.textures;
         const textureNames = this.textureNames;
         if (!(textures && textures.length > 0 && textureNames && textureNames.length > 0)) {
-            console.error(`[spine4][jsb] init abort: invalid textures asset="${this.name ?? ''}" textures=${textures ? textures.length : 0} textureNames=${textureNames ? textureNames.length : 0}`);
             cc.errorID(7507, this.name);
             return;
         }
@@ -160,18 +152,11 @@ const cacheManager = require('./jsb-cache-manager');
             filePath = cacheManager.getCache(this.nativeUrl) || this.nativeUrl;
         }
         if (!filePath) {
-            console.error(`[spine4][jsb] init abort: empty skeleton source path/json for asset="${this.name ?? ''}"`);
             return;
         }
         const nativeSkeletonData = spine.initSkeletonData(uuid, filePath, atlasText, jsbTextures, this.scale);
         this._nativeSkeletonCache = nativeSkeletonData;
         this._nativeDataInited = !!nativeSkeletonData;
-        try {
-            const sourceType = this.skeletonJsonStr ? 'json' : 'binary';
-            console.log(`[spine4][jsb] init data uuid="${uuid}" source=${sourceType} ok=${!!nativeSkeletonData}`);
-        } catch (e) {
-            // ignore log errors
-        }
         if (nativeSkeletonData) {
             if (!this._skeletonCache) {
                 this._skeletonCache = nativeSkeletonData;
@@ -202,7 +187,6 @@ const cacheManager = require('./jsb-cache-manager');
         const uuid = skeletonData._nativeUuid || (typeof skeletonData.mergedUUID === 'function' ? skeletonData.mergedUUID() : '');
         skeletonData._nativeUuid = uuid;
         if (!uuid) {
-            console.error('[spine4][jsb] ensureNativeSpine4Data abort: empty merged uuid');
             return false;
         }
 
@@ -210,7 +194,6 @@ const cacheManager = require('./jsb-cache-manager');
         const textures = skeletonData.textures;
         const textureNames = skeletonData.textureNames;
         if (!atlasText || !(textures && textures.length > 0 && textureNames && textureNames.length > 0)) {
-            console.error(`[spine4][jsb] ensureNativeSpine4Data abort: invalid data uuid="${uuid}" atlasLen=${(atlasText || '').length} textures=${textures ? textures.length : 0} textureNames=${textureNames ? textureNames.length : 0}`);
             return false;
         }
 
@@ -236,7 +219,6 @@ const cacheManager = require('./jsb-cache-manager');
             filePath = cacheManager.getCache(skeletonData.nativeUrl) || skeletonData.nativeUrl;
         }
         if (!filePath) {
-            console.error(`[spine4][jsb] ensureNativeSpine4Data abort: empty source path/json uuid="${uuid}"`);
             return false;
         }
 
@@ -251,7 +233,6 @@ const cacheManager = require('./jsb-cache-manager');
             skeletonData.height = nativeSkeletonData.height;
         }
 
-        console.log(`[spine4][jsb] ensureNativeSpine4Data uuid="${uuid}" ok=${!!nativeSkeletonData}`);
         return !!nativeSkeletonData;
     }
 
@@ -513,26 +494,11 @@ const cacheManager = require('./jsb-cache-manager');
         // Force native init in jsb path. In spine4, runtime cache may be populated by wasm,
         // which does not guarantee native SkeletonDataMgr registration.
         if (typeof skeletonData.init === 'function') {
-            try {
-                console.log(`[spine4][jsb] before init call asset="${skeletonData?.name ?? ''}" nativeInited=${!!skeletonData?._nativeDataInited}`);
-            } catch (e) {
-                // ignore log errors
-            }
             skeletonData.init();
-            try {
-                console.log(`[spine4][jsb] after init call asset="${skeletonData?.name ?? ''}" nativeInited=${!!skeletonData?._nativeDataInited} nativeUuid="${skeletonData?._nativeUuid ?? ''}"`);
-            } catch (e) {
-                // ignore log errors
-            }
         }
         ensureNativeSpine4Data(skeletonData);
         if (!skeletonData._nativeUuid && typeof skeletonData.mergedUUID === 'function') {
             skeletonData._nativeUuid = skeletonData.mergedUUID();
-        }
-        try {
-            console.log(`[spine4][jsb] setSkeletonData start asset="${skeletonData?.name ?? ''}" uuid="${skeletonData?._nativeUuid ?? ''}" merged="${skeletonData?.mergedUUID?.() ?? ''}" cacheMode=${this._cacheMode}`);
-        } catch (e) {
-            // ignore log errors
         }
         const uuid = skeletonData._nativeUuid || skeletonData.mergedUUID();
         if (!uuid) {
@@ -567,19 +533,10 @@ const cacheManager = require('./jsb-cache-manager');
                     ensureNativeSpine4Data(skeletonData);
                     retained = spine.retainSkeletonData(uuid);
                 }
-                if (!retained) {
-                    console.error(`[spine4][jsb] retainSkeletonData failed for uuid="${uuid}" merged="${skeletonData?.mergedUUID?.() ?? ''}" nativeInited=${!!skeletonData._nativeDataInited}`);
-                }
                 spine.initSkeletonRenderer(nativeSkeleton, uuid);
             } catch (e) {
                 cc._throw(e);
                 return;
-            }
-            try {
-                const spineKeys = Object.keys(spine).join(',');
-                console.log(`[spine4][jsb] initSkeletonRenderer done uuid="${uuid}" spineKeys=[${spineKeys}]`);
-            } catch (e) {
-                // ignore log errors
             }
             nativeSkeleton.setDebugSlotsEnabled(this.debugSlots);
             nativeSkeleton.setDebugMeshEnabled(this.debugMesh);
@@ -602,11 +559,6 @@ const cacheManager = require('./jsb-cache-manager');
         nativeSkeleton.setRenderEntity(this._renderEntity.nativeObj);
 
         this._skeleton = nativeSkeleton.getSkeleton();
-        if (!this._skeleton) {
-            console.error(`[spine4][jsb] nativeSkeleton.getSkeleton() returned null for uuid="${uuid}"`);
-        } else {
-            console.log(`[spine4][jsb] native skeleton created for uuid="${uuid}"`);
-        }
 
         // init skeleton listener
         this._startListener && this.setStartListener(this._startListener);
@@ -688,10 +640,6 @@ const cacheManager = require('./jsb-cache-manager');
             return this._instance.updateRenderData();
         }
 
-        if (!this._loggedMissingInstanceInUpdate) {
-            this._loggedMissingInstanceInUpdate = true;
-            console.warn('[spine4][jsb] updateRenderData skipped: no _nativeSkeleton and no _instance.');
-        }
         return null;
     };
 
