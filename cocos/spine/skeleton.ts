@@ -60,6 +60,15 @@ function detectSpineVersionFromAsset (skeletonData: SkeletonData | null): string
     if (jsonVersion) {
         return jsonVersion;
     }
+    const atlasText = (skeletonData as any)?._atlasText as string | undefined;
+    if (atlasText) {
+        if (/(^|\n)\s*(bounds|offsets)\s*:/m.test(atlasText)) {
+            return '4.0.0';
+        }
+        if (/(^|\n)\s*(xy|orig|offset)\s*:/m.test(atlasText)) {
+            return '3.8.0';
+        }
+    }
     const nativeAsset = (skeletonData as any)?._nativeAsset as ArrayBuffer | undefined;
     if (!nativeAsset || nativeAsset.byteLength <= 0) {
         return undefined;

@@ -58,7 +58,25 @@ function extractSpineVersionFromJsonText (jsonText: string): string | undefined 
     return undefined;
 }
 
-function detectSpineVersion (skeletonJson: spine.SkeletonJson | null, nativeAsset?: ArrayBuffer): string | undefined {
+function detectSpineVersionFromAtlasText (atlasText?: string): string | undefined {
+    if (!atlasText) {
+        return undefined;
+    }
+
+    const hasSpine4Markers = /(^|\n)\s*(bounds|offsets)\s*:/m.test(atlasText);
+    if (hasSpine4Markers) {
+        return '4.0.0';
+    }
+
+    const hasSpine3Markers = /(^|\n)\s*(xy|orig|offset)\s*:/m.test(atlasText);
+    if (hasSpine3Markers) {
+        return '3.8.0';
+    }
+
+    return undefined;
+}
+
+function detectSpineVersion (skeletonJson: spine.SkeletonJson | null, nativeAsset?: ArrayBuffer, atlasText?: string): string | undefined {
     const jsonVersion = (skeletonJson as any)?.skeleton?.spine as string | undefined;
     if (jsonVersion) {
         return jsonVersion;
@@ -86,6 +104,11 @@ function detectSpineVersion (skeletonJson: spine.SkeletonJson | null, nativeAsse
         } catch {
             // Ignore parsing errors and fallback to default runtime.
         }
+    }
+
+    const fromAtlasText = detectSpineVersionFromAtlasText(atlasText);
+    if (fromAtlasText) {
+        return fromAtlasText;
     }
 
     return undefined;
@@ -284,7 +307,7 @@ export class SkeletonData extends Asset {
      */
     public createNode (callback: (err: Error|null, node: Node) => void): void {
         const node = new Node(this.name);
-        const spineVersion = detectSpineVersion(this._skeletonJson, this._nativeAsset);
+        const spineVersion = detectSpineVersion(this._skeletonJson, this._nativeAsset, this._atlasText);
         let useSpine3 = !!spineVersion && spineVersion.startsWith('3.');
         if (!spineVersion) {
             const runtimeData = this.getRuntimeData(true);
@@ -326,7 +349,7 @@ export class SkeletonData extends Asset {
     }
 
     private _getSpineMajorVersion (): '3' | '4' {
-        const version = detectSpineVersion(this._skeletonJson, this._nativeAsset);
+        const version = detectSpineVersion(this._skeletonJson, this._nativeAsset, this._atlasText);
         if (version?.startsWith('3.')) {
             return '3';
         }
@@ -443,7 +466,7 @@ export class SkeletonData extends Asset {
      *              @zh 值为 false 时，当发生错误时将打印出反馈信息。
      */
     public getRuntimeData (quiet?: boolean): spine.SkeletonData | null {
-        const spineVersion = detectSpineVersion(this._skeletonJson, this._nativeAsset);
+        const spineVersion = detectSpineVersion(this._skeletonJson, this._nativeAsset, this._atlasText);
         if (this._skeletonCache) {
             return this._skeletonCache;
         }
@@ -532,7 +555,7 @@ export class SkeletonData extends Asset {
      */
     public destroy (): boolean {
         SkeletonCache.sharedCache.destroyCachedAnimations(this._uuid);
-        const spineVersion = detectSpineVersion(this._skeletonJson, this._nativeAsset);
+        const spineVersion = detectSpineVersion(this._skeletonJson, this._nativeAsset, this._atlasText);
         const wasmUtil = getSpineWasmUtilByVersion(spineVersion);
         wasmUtil.destroySpineSkeletonDataWithUUID(this.mergedUUID());
         return super.destroy();

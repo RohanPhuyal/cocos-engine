@@ -513,7 +513,7 @@ export class Skeleton extends UIRenderer {
      * 骨骼数据包含了骨骼信息（绑定骨骼动作，slots，渲染顺序，
      * attachments，皮肤等等）和动画但不持有任何状态。<br/>
      * 多个 Skeleton 可以共用相同的骨骼数据。
-    * @property {sp.SkeletonData} skeletonData
+    * @property {sp.SkeletonData}
      */
     @editable
     @type(Asset)

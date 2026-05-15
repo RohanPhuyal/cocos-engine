@@ -118,8 +118,14 @@ SkeletonAnimation *SkeletonAnimation::createWithBinaryFile(const std::string &sk
 void SkeletonAnimation::initialize() {
     super::initialize();
 
+    auto *skeletonData = _skeleton ? _skeleton->getData() : nullptr;
+    if (!skeletonData) {
+        CC_LOG_WARNING("Spine: Skeleton data is null during SkeletonAnimation initialization.");
+        return;
+    }
+
     _ownsAnimationStateData = true;
-    _state = new (__FILE__, __LINE__) AnimationState(new (__FILE__, __LINE__) AnimationStateData(_skeleton->getData()));
+    _state = new (__FILE__, __LINE__) AnimationState(new (__FILE__, __LINE__) AnimationStateData(skeletonData));
     _state->setRendererObject(this);
     _state->setListener(animationCallback);
 }
@@ -144,7 +150,7 @@ SkeletonAnimation::~SkeletonAnimation() {
 }
 
 void SkeletonAnimation::update(float deltaTime) {
-    if (!_skeleton) return;
+    if (!_skeleton || !_state) return;
     if (!_paused) {
         deltaTime *= _timeScale * GlobalTimeScale;
         if (_ownsSkeleton) _skeleton->update(deltaTime);
@@ -183,8 +189,10 @@ void SkeletonAnimation::setMix(const std::string &fromAnimation, const std::stri
 }
 
 TrackEntry *SkeletonAnimation::setAnimation(int trackIndex, const std::string &name, bool loop) {
-    if (!_skeleton) return nullptr;
-    Animation *animation = _skeleton->getData()->findAnimation(name.c_str());
+    if (!_skeleton || !_state) return nullptr;
+    SkeletonData *skeletonData = _skeleton->getData();
+    if (!skeletonData) return nullptr;
+    Animation *animation = skeletonData->findAnimation(name.c_str());
     if (!animation) {
         CC_LOG_WARNING("Spine: Animation not found: %s", name.c_str());
         return nullptr;
@@ -195,8 +203,10 @@ TrackEntry *SkeletonAnimation::setAnimation(int trackIndex, const std::string &n
 }
 
 TrackEntry *SkeletonAnimation::addAnimation(int trackIndex, const std::string &name, bool loop, float delay) {
-    if (!_skeleton) return nullptr;
-    Animation *animation = _skeleton->getData()->findAnimation(name.c_str());
+    if (!_skeleton || !_state) return nullptr;
+    SkeletonData *skeletonData = _skeleton->getData();
+    if (!skeletonData) return nullptr;
+    Animation *animation = skeletonData->findAnimation(name.c_str());
     if (!animation) {
         CC_LOG_WARNING("Spine: Animation not found: %s", name.c_str());
         return nullptr;
@@ -225,10 +235,10 @@ TrackEntry *SkeletonAnimation::addEmptyAnimation(int trackIndex, float mixDurati
 }
 
 Animation *SkeletonAnimation::findAnimation(const std::string &name) const {
-    if (_skeleton) {
-        return _skeleton->getData()->findAnimation(name.c_str());
-    }
-    return nullptr;
+    if (!_skeleton) return nullptr;
+    SkeletonData *skeletonData = _skeleton->getData();
+    if (!skeletonData) return nullptr;
+    return skeletonData->findAnimation(name.c_str());
 }
 
 TrackEntry *SkeletonAnimation::getCurrent(int trackIndex) {
