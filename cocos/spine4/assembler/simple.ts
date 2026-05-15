@@ -154,6 +154,7 @@ function updateComponentRenderData (comp: Skeleton): void {
 function realTimeTraverse (comp: Skeleton): void {
     const floatStride = (comp.useTint ?  _byteStrideTwoColor : _byteStrideOneColor) / Float32Array.BYTES_PER_ELEMENT;
     const model = comp.updateRenderData();
+    if (!model) return;
     const vc = model.vCount as number;
     const ic = model.iCount as number;
     const rd = comp.renderData;

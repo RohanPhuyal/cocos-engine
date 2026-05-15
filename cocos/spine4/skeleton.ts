@@ -24,7 +24,7 @@
 import { EDITOR_NOT_IN_PREVIEW, JSB } from 'internal:constants';
 import { ccclass, executeInEditMode, help, menu, serializable, type, override, displayOrder, editable, visible } from 'cc.decorator';
 import { Material, Texture2D, Asset } from '../asset/assets';
-import { error, errorID, logID, warnID } from '../core/platform/debug';
+import { error, errorID, log, logID, warnID } from '../core/platform/debug';
 import { Enum, EnumType, ccenum } from '../core/value-types/enum';
 import { Node, NodeEventType } from '../scene-graph';
 import { CCObjectFlags, Color, RecyclePool, js } from '../core';
@@ -181,6 +181,26 @@ function resolvePremultipliedAlpha (current: boolean, skeletonData: any, runtime
         useShaderFallback.value = false;
     }
     return false;
+}
+
+function createRuntimeSkeletonInstance (): spine.SkeletonInstance | null {
+    const spine4Global = (globalThis as Record<string, any>).spine4 as Record<string, any> | undefined;
+    const spineGlobal = (globalThis as Record<string, any>).spine as Record<string, any> | undefined;
+    const ctor = JSB
+        ? (spine4Global?.SkeletonInstance ?? spineGlobal?.SkeletonInstance ?? (spine as any).SkeletonInstance)
+        : (spine as any).SkeletonInstance;
+    if (typeof ctor !== 'function') {
+        if (JSB) {
+            error(
+                `[spine4][trace] SkeletonInstance missing. `
+                + `typeof(spine4.SkeletonInstance)=${typeof spine4Global?.SkeletonInstance}, `
+                + `typeof(spine.SkeletonInstance)=${typeof spineGlobal?.SkeletonInstance}, `
+                + `typeof(localSpine.SkeletonInstance)=${typeof (spine as any).SkeletonInstance}`,
+            );
+        }
+        return null;
+    }
+    return new ctor();
 }
 
 const CachedFrameTime = 1 / 60;
@@ -469,6 +489,7 @@ export class Skeleton extends UIRenderer {
     private _slotTextures: Map<string, Texture2D> | null = null;
 
     private _isRenderable: boolean = false;
+    private _loggedMissingInstanceInUpdate = false;
 
     constructor () {
         super();
@@ -478,9 +499,11 @@ export class Skeleton extends UIRenderer {
         this._startSlotIndex = -1;
         this._endSlotIndex = -1;
         if (!JSB) {
-            this._instance = new spine.SkeletonInstance();
-            this._instance.dtRate = this._timeScale * timeScale;
-            this._instance.isCache = this.isAnimationCached();
+            this._instance = createRuntimeSkeletonInstance();
+            if (this._instance) {
+                this._instance.dtRate = this._timeScale * timeScale;
+                this._instance.isCache = this.isAnimationCached();
+            }
         }
         this.attachUtil = new AttachUtil();
     }
@@ -935,6 +958,8 @@ export class Skeleton extends UIRenderer {
         //this.setSkeletonData(data);
         this._runtimeData = skeletonData!.getRuntimeData();
         if (!this._runtimeData) {
+            const version = (this._skeletonData as any)?._skeletonJson?.skeleton?.spine ?? 'unknown';
+            error(`[spine4][trace] runtimeData is null for asset "${this._skeletonData?.name ?? ''}" (spine version: ${version}).`);
             return;
         }
         const shaderFallback = { value: false };
@@ -1018,15 +1043,32 @@ export class Skeleton extends UIRenderer {
                 this._skeleton = this._skeletonInfo.skeleton!;
             }
         } else {
-            if (!JSB && !this._instance) {
-                const instance = new spine.SkeletonInstance();
+            if (!this._instance) {
+                const instance = createRuntimeSkeletonInstance();
+                if (!instance) {
+                    const runtimeKeys = Object.keys(((globalThis as Record<string, any>).spine4 ?? {}) as Record<string, any>).join(',');
+                    error(`[spine4] Failed to create SkeletonInstance. JSB=${JSB}, spine4 keys=[${runtimeKeys}]`);
+                    return;
+                }
                 instance.dtRate = this._timeScale * timeScale;
                 instance.isCache = this.isAnimationCached();
                 this._instance = instance;
+                this._loggedMissingInstanceInUpdate = false;
             }
+            if (!this._instance) {
+                error('[spine4] Failed to create SkeletonInstance.');
+                return;
+            }
+            log(`[spine4][trace] initSkeleton start asset="${this._skeletonData?.name ?? ''}" cached=${this.isAnimationCached()}`);
             this._skeleton = this._instance!.initSkeleton(skeletonData);
+            if (!this._skeleton) {
+                const version = (this._skeletonData as any)?._skeletonJson?.skeleton?.spine ?? 'unknown';
+                error(`[spine4] initSkeleton failed for asset "${this._skeletonData?.name ?? ''}" (spine version: ${version}).`);
+                return;
+            }
             this._state = this._instance!.getAnimationState();
             this._instance!.setPremultipliedAlpha(this._premultipliedAlpha);
+            log(`[spine4][trace] initSkeleton success asset="${this._skeletonData?.name ?? ''}"`);
         }
         if (this._isRenderable) {
             SkeletonSystem.getInstance().add(this);
@@ -1268,7 +1310,14 @@ export class Skeleton extends UIRenderer {
             }
             this._updateCache(dt);
         } else {
-            this._instance!.updateAnimation(dt);
+            if (!this._instance) {
+                if (!this._loggedMissingInstanceInUpdate) {
+                    error(`[spine4][trace] updateAnimation skipped because instance is null. asset="${this._skeletonData?.name ?? ''}"`);
+                    this._loggedMissingInstanceInUpdate = true;
+                }
+                return;
+            }
+            this._instance.updateAnimation(dt);
         }
     }
 

@@ -1,0 +1,1155 @@
+/****************************************************************************
+ Copyright (c) 2018 Xiamen Yaji Software Co., Ltd.
+
+ http://www.cocos.com
+
+ Permission is hereby granted, free of charge, to any person obtaining a copy
+ of this software and associated engine source code (the "Software"), a limited,
+  worldwide, royalty-free, non-assignable, revocable and non-exclusive license
+ to use Cocos Creator solely to develop games on your target platforms. You shall
+  not use Cocos Creator software for developing other software or tools that's
+  used for developing games. You are not granted to publish, distribute,
+  sublicense, and/or sell copies of Cocos Creator.
+
+ The software or tools in this License Agreement are licensed, not sold.
+ Xiamen Yaji Software Co., Ltd. reserves all rights not expressly granted to you.
+
+ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+ THE SOFTWARE.
+ ****************************************************************************/
+const cacheManager = require('./jsb-cache-manager');
+
+// @ts-expect-error jsb polyfills
+(function patchSpine4Jsb (retryCount = 0) {
+    const getClassByName = cc?.js?.getClassByName?.bind(cc.js);
+    const spine4SkeletonCtor = getClassByName ? getClassByName('sp4.Skeleton') : null;
+    if (globalThis.spine4 === undefined
+        || globalThis.middleware === undefined
+        || cc.internal.Spine4SkeletonData === undefined
+        || !spine4SkeletonCtor) {
+        if (retryCount < 100) {
+            setTimeout(() => patchSpine4Jsb(retryCount + 1), 0);
+        }
+        return;
+    }
+    const spine = globalThis.spine4;
+    const middleware = globalThis.middleware;
+
+    function safeDefineProperty (target, key, descriptor) {
+        const existing = Object.getOwnPropertyDescriptor(target, key);
+        if (existing && !existing.configurable) {
+            return;
+        }
+        Object.defineProperty(target, key, descriptor);
+    }
+
+    middleware.generateGetSet(spine);
+
+    // spine global time scale
+    Object.defineProperty(spine, 'timeScale', {
+        get () {
+            return this._timeScale;
+        },
+        set (value) {
+            this._timeScale = value;
+            spine.SkeletonAnimation.setGlobalTimeScale(value);
+        },
+        configurable: true,
+    });
+
+    const _slotColor = cc.color(0, 0, 255, 255);
+    const _boneColor = cc.color(255, 0, 0, 255);
+    const _meshColor = cc.color(255, 255, 0, 255);
+    const _originColor = cc.color(0, 255, 0, 255);
+
+    const skeletonDataProto = cc.internal.Spine4SkeletonData.prototype;
+    let _gTextureIdx = 1;
+    const _textureKeyMap = {};
+    const _textureMap = new WeakMap();
+
+    const skeletonDataMgr = spine.SkeletonDataMgr.getInstance();
+    spine.skeletonDataMgr = skeletonDataMgr;
+    skeletonDataMgr.setDestroyCallback((textureIndex) => {
+        if (!textureIndex) return;
+        const texKey = _textureKeyMap[textureIndex];
+        if (texKey && _textureMap.has(texKey)) {
+            _textureMap.delete(texKey);
+            delete _textureKeyMap[textureIndex];
+        }
+    });
+
+    const skeletonCacheMgr = spine.SkeletonCacheMgr.getInstance();
+    spine.skeletonCacheMgr = skeletonCacheMgr;
+    skeletonDataProto.destroy = function () {
+        const uuid = this._nativeUuid || this.mergedUUID();
+        this.reset();
+        skeletonCacheMgr.removeSkeletonCache(uuid);
+        cc.Asset.prototype.destroy.call(this);
+    };
+
+    skeletonDataProto.reset = function () {
+        if (this._skeletonCache || this._nativeDataInited) {
+            spine.disposeSkeletonData(this._nativeUuid || this.mergedUUID());
+            this._jsbTextures = null;
+            this._skeletonCache = null;
+        }
+        this._nativeDataInited = false;
+        this._nativeSkeletonCache = null;
+        this._nativeUuid = '';
+        this._atlasCache = null;
+    };
+
+    skeletonDataProto.getRuntimeData = function () {
+        if (!this._skeletonCache) {
+            this.init();
+        }
+        return this._skeletonCache;
+    };
+
+    skeletonDataProto.init = function () {
+        if (this._nativeDataInited) return;
+
+        const uuid = this.mergedUUID();
+        this._nativeUuid = uuid;
+        try {
+            console.log(`[spine4][jsb] init enter asset="${this.name ?? ''}" uuid="${uuid ?? ''}" atlasLen=${(this.atlasText || '').length} textures=${this.textures?.length ?? 0} textureNames=${this.textureNames?.length ?? 0}`);
+        } catch (e) {
+            // ignore log errors
+        }
+        if (!uuid) {
+            console.error('[spine4][jsb] init abort: empty merged uuid');
+            cc.errorID(7504);
+            return;
+        }
+
+        const atlasText = this.atlasText;
+        if (!atlasText) {
+            console.error(`[spine4][jsb] init abort: empty atlas text for asset="${this.name ?? ''}"`);
+            cc.errorID(7508, this.name);
+            return;
+        }
+
+        const textures = this.textures;
+        const textureNames = this.textureNames;
+        if (!(textures && textures.length > 0 && textureNames && textureNames.length > 0)) {
+            console.error(`[spine4][jsb] init abort: invalid textures asset="${this.name ?? ''}" textures=${textures ? textures.length : 0} textureNames=${textureNames ? textureNames.length : 0}`);
+            cc.errorID(7507, this.name);
+            return;
+        }
+
+        const jsbTextures = {};
+        for (let i = 0; i < textures.length; ++i) {
+            const texture = textures[i];
+            const textureIdx = this.recordTexture(texture);
+            const spTex = new middleware.Texture2D();
+            spTex.setRealTextureIndex(textureIdx);
+            spTex.setPixelsWide(texture.width);
+            spTex.setPixelsHigh(texture.height);
+            spTex.setRealTexture(texture);
+            jsbTextures[textureNames[i]] = spTex;
+        }
+        this._jsbTextures = jsbTextures;
+
+        let filePath = this.skeletonJsonStr;
+        if (!filePath) {
+            filePath = cacheManager.getCache(this.nativeUrl) || this.nativeUrl;
+        }
+        if (!filePath) {
+            console.error(`[spine4][jsb] init abort: empty skeleton source path/json for asset="${this.name ?? ''}"`);
+            return;
+        }
+        const nativeSkeletonData = spine.initSkeletonData(uuid, filePath, atlasText, jsbTextures, this.scale);
+        this._nativeSkeletonCache = nativeSkeletonData;
+        this._nativeDataInited = !!nativeSkeletonData;
+        try {
+            const sourceType = this.skeletonJsonStr ? 'json' : 'binary';
+            console.log(`[spine4][jsb] init data uuid="${uuid}" source=${sourceType} ok=${!!nativeSkeletonData}`);
+        } catch (e) {
+            // ignore log errors
+        }
+        if (nativeSkeletonData) {
+            if (!this._skeletonCache) {
+                this._skeletonCache = nativeSkeletonData;
+            }
+            this.width = nativeSkeletonData.width;
+            this.height = nativeSkeletonData.height;
+        }
+    };
+
+    skeletonDataProto.recordTexture = function (texture) {
+        const index = _gTextureIdx;
+        const texKey = _textureKeyMap[index] = { key: index };
+        _textureMap.set(texKey, texture);
+        _gTextureIdx++;
+        return index;
+    };
+
+    skeletonDataProto.getTextureByIndex = function (textureIdx) {
+        const texKey = _textureKeyMap[textureIdx];
+        if (!texKey) return null;
+        return _textureMap.get(texKey);
+    };
+
+    function ensureNativeSpine4Data (skeletonData) {
+        if (!skeletonData) return false;
+        if (skeletonData._nativeDataInited) return true;
+
+        const uuid = skeletonData._nativeUuid || (typeof skeletonData.mergedUUID === 'function' ? skeletonData.mergedUUID() : '');
+        skeletonData._nativeUuid = uuid;
+        if (!uuid) {
+            console.error('[spine4][jsb] ensureNativeSpine4Data abort: empty merged uuid');
+            return false;
+        }
+
+        const atlasText = skeletonData.atlasText;
+        const textures = skeletonData.textures;
+        const textureNames = skeletonData.textureNames;
+        if (!atlasText || !(textures && textures.length > 0 && textureNames && textureNames.length > 0)) {
+            console.error(`[spine4][jsb] ensureNativeSpine4Data abort: invalid data uuid="${uuid}" atlasLen=${(atlasText || '').length} textures=${textures ? textures.length : 0} textureNames=${textureNames ? textureNames.length : 0}`);
+            return false;
+        }
+
+        const jsbTextures = {};
+        for (let i = 0; i < textures.length; ++i) {
+            const texture = textures[i];
+            const textureIdx = _gTextureIdx;
+            const texKey = _textureKeyMap[textureIdx] = { key: textureIdx };
+            _textureMap.set(texKey, texture);
+            _gTextureIdx++;
+
+            const spTex = new middleware.Texture2D();
+            spTex.setRealTextureIndex(textureIdx);
+            spTex.setPixelsWide(texture.width);
+            spTex.setPixelsHigh(texture.height);
+            spTex.setRealTexture(texture);
+            jsbTextures[textureNames[i]] = spTex;
+        }
+        skeletonData._jsbTextures = jsbTextures;
+
+        let filePath = skeletonData.skeletonJsonStr;
+        if (!filePath) {
+            filePath = cacheManager.getCache(skeletonData.nativeUrl) || skeletonData.nativeUrl;
+        }
+        if (!filePath) {
+            console.error(`[spine4][jsb] ensureNativeSpine4Data abort: empty source path/json uuid="${uuid}"`);
+            return false;
+        }
+
+        const nativeSkeletonData = spine.initSkeletonData(uuid, filePath, atlasText, jsbTextures, skeletonData.scale || 1);
+        skeletonData._nativeSkeletonCache = nativeSkeletonData;
+        skeletonData._nativeDataInited = !!nativeSkeletonData;
+        if (nativeSkeletonData) {
+            if (!skeletonData._skeletonCache) {
+                skeletonData._skeletonCache = nativeSkeletonData;
+            }
+            skeletonData.width = nativeSkeletonData.width;
+            skeletonData.height = nativeSkeletonData.height;
+        }
+
+        console.log(`[spine4][jsb] ensureNativeSpine4Data uuid="${uuid}" ok=${!!nativeSkeletonData}`);
+        return !!nativeSkeletonData;
+    }
+
+    function readSlotBlendMode (slotData) {
+        if (!slotData) return null;
+        if (slotData.blendMode != null) return slotData.blendMode;
+        if (slotData.data && slotData.data.blendMode != null) return slotData.data.blendMode;
+        if (typeof slotData.getBlendMode === 'function') return slotData.getBlendMode();
+        return null;
+    }
+
+    function getRuntimeSlots (runtimeData) {
+        const slots = runtimeData && runtimeData.slots;
+        if (!slots) return [];
+        if (Array.isArray(slots)) return slots;
+        if (typeof slots.size === 'function' && typeof slots.get === 'function') {
+            const result = [];
+            const count = slots.size();
+            for (let i = 0; i < count; ++i) result.push(slots.get(i));
+            return result;
+        }
+        return [];
+    }
+
+    function hasScreenBlendMode (runtimeData) {
+        const screenEnum = spine && spine.BlendMode ? spine.BlendMode.Screen : 3;
+        const slots = getRuntimeSlots(runtimeData);
+        for (let i = 0; i < slots.length; ++i) {
+            const blendMode = readSlotBlendMode(slots[i]);
+            if (blendMode === screenEnum || blendMode === 3 || blendMode === 'screen' || blendMode === 'Screen') {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    function hasAtlasPmaFlag (skeletonData) {
+        const pages = skeletonData && skeletonData._atlasCache && skeletonData._atlasCache.pages;
+        return Array.isArray(pages) && pages.some((p) => !!(p && p.pma));
+    }
+
+    function hasScreenBlendModeInSkeletonJson (skeletonData) {
+        const slots = skeletonData && skeletonData._skeletonJson && skeletonData._skeletonJson.slots;
+        if (!Array.isArray(slots)) return false;
+        for (let i = 0; i < slots.length; ++i) {
+            const blendMode = slots[i] && slots[i].blend;
+            if (blendMode === 'screen' || blendMode === 'Screen' || blendMode === 3) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    function getMethodIfCallable (obj, methodName) {
+        let proto = obj;
+        while (proto) {
+            const desc = Object.getOwnPropertyDescriptor(proto, methodName);
+            if (desc) {
+                return typeof desc.value === 'function' ? desc.value : null;
+            }
+            proto = Object.getPrototypeOf(proto);
+        }
+        return null;
+    }
+
+    function ensureTexturesPremultiplied (skeletonData) {
+        const textures = skeletonData && skeletonData.textures;
+        if (!Array.isArray(textures) || textures.length === 0) {
+            return false;
+        }
+        let hasValidTexture = false;
+        let allPrepared = true;
+        for (let i = 0; i < textures.length; ++i) {
+            const texture = textures[i];
+            if (!texture) {
+                continue;
+            }
+            hasValidTexture = true;
+            let hasPma = false;
+            const hasPremultipliedAlpha = getMethodIfCallable(texture, 'hasPremultipliedAlpha');
+            const setPremultiplyAlpha = getMethodIfCallable(texture, 'setPremultiplyAlpha');
+            if (hasPremultipliedAlpha) {
+                hasPma = !!hasPremultipliedAlpha.call(texture);
+            }
+            if (!hasPma && setPremultiplyAlpha) {
+                setPremultiplyAlpha.call(texture, true);
+                if (hasPremultipliedAlpha) {
+                    hasPma = !!hasPremultipliedAlpha.call(texture);
+                }
+            }
+            if (!hasPma) {
+                allPrepared = false;
+            }
+        }
+        return hasValidTexture && allPrepared;
+    }
+
+    function resolvePremultipliedAlpha (current, skeletonData, runtimeData) {
+        if (hasAtlasPmaFlag(skeletonData)) {
+            return true;
+        }
+        if (hasScreenBlendMode(runtimeData) || hasScreenBlendModeInSkeletonJson(skeletonData)) {
+            return ensureTexturesPremultiplied(skeletonData);
+        }
+        return false;
+    }
+
+    const animation = spine.SkeletonAnimation.prototype;
+    // The methods are added to be compatibility with old versions.
+    animation.setCompleteListener = function (listener) {
+        this._compeleteListener = listener;
+        this.setCompleteListenerNative(function (trackEntry) {
+            const loopCount = Math.floor(trackEntry.trackTime / trackEntry.animationEnd);
+            this._compeleteListener && this._compeleteListener(trackEntry, loopCount);
+        });
+    };
+
+    // The methods are added to be compatibility with old versions.
+    animation.setTrackCompleteListener = function (trackEntry, listener) {
+        this._trackCompeleteListener = listener;
+        this.setTrackCompleteListenerNative(trackEntry, function (trackEntryNative) {
+            const loopCount = Math.floor(trackEntryNative.trackTime / trackEntryNative.animationEnd);
+            this._trackCompeleteListener && this._trackCompeleteListener(trackEntryNative, loopCount);
+        });
+    };
+
+    // Temporary solution before upgrade the Spine API
+    animation.setAnimationListener = function (target, callback) {
+        this._target = target;
+        this._callback = callback;
+
+        const AnimationEventType = cc.internal.Spine4AnimationEventType;
+
+        this.setStartListener(function (trackEntry) {
+            if (this._target && this._callback) {
+                this._callback.call(this._target, this, trackEntry, AnimationEventType.START, null, 0);
+            }
+        });
+
+        this.setInterruptListener(function (trackEntry) {
+            if (this._target && this._callback) {
+                this._callback.call(this._target, this, trackEntry, AnimationEventType.INTERRUPT, null, 0);
+            }
+        });
+
+        this.setEndListener(function (trackEntry) {
+            if (this._target && this._callback) {
+                this._callback.call(this._target, this, trackEntry, AnimationEventType.END, null, 0);
+            }
+        });
+
+        this.setDisposeListener(function (trackEntry) {
+            if (this._target && this._callback) {
+                this._callback.call(this._target, this, trackEntry, AnimationEventType.DISPOSE, null, 0);
+            }
+        });
+
+        this.setCompleteListener(function (trackEntry, loopCount) {
+            if (this._target && this._callback) {
+                this._callback.call(this._target, this, trackEntry, AnimationEventType.COMPLETE, null, loopCount);
+            }
+        });
+
+        this.setEventListener(function (trackEntry, event) {
+            if (this._target && this._callback) {
+                this._callback.call(this._target, this, trackEntry, AnimationEventType.EVENT, event, 0);
+            }
+        });
+    };
+
+    const skeleton = spine4SkeletonCtor.prototype;
+    const AnimationCacheMode = spine4SkeletonCtor.AnimationCacheMode;
+    safeDefineProperty(skeleton, 'paused', {
+        get () {
+            return this._paused || false;
+        },
+        set (value) {
+            this._paused = value;
+            if (this._nativeSkeleton) {
+                this._nativeSkeleton.paused(value);
+            }
+        },
+    });
+
+    safeDefineProperty(skeleton, 'premultipliedAlpha', {
+        get () {
+            if (this._premultipliedAlpha === undefined) {
+                return true;
+            }
+            return this._premultipliedAlpha;
+        },
+        set (value) {
+            this._premultipliedAlpha = value;
+            if (this._nativeSkeleton) {
+                this._nativeSkeleton.setOpacityModifyRGB(this._premultipliedAlpha);
+            }
+        },
+    });
+
+    safeDefineProperty(skeleton, 'timeScale', {
+        get () {
+            if (this._timeScale === undefined) return 1.0;
+            return this._timeScale;
+        },
+        set (value) {
+            this._timeScale = value;
+            if (this._nativeSkeleton) {
+                this._nativeSkeleton.setTimeScale(this._timeScale);
+            }
+        },
+    });
+
+    const _updateMaterial = skeleton.updateMaterial;
+    skeleton.updateMaterial = function () {
+        _updateMaterial.call(this);
+        if (this._nativeSkeleton) {
+            const mat = this.getMaterialTemplate();
+            this._nativeSkeleton.setMaterial(mat);
+        }
+    };
+
+    const _updateDebugDraw = skeleton._updateDebugDraw;
+    skeleton._updateDebugDraw = function () {
+        _updateDebugDraw.call(this);
+        if (this._nativeSkeleton && !this.isAnimationCached()) {
+            this._nativeSkeleton.setDebugMeshEnabled(this.debugMesh);
+            this._nativeSkeleton.setDebugSlotsEnabled(this.debugSlots);
+            this._nativeSkeleton.setDebugBonesEnabled(this.debugBones);
+        }
+    };
+
+    const _updateUseTint = skeleton._updateUseTint;
+    skeleton._updateUseTint = function () {
+        _updateUseTint.call(this);
+        if (this._nativeSkeleton) {
+            this._nativeSkeleton.setUseTint(this.useTint);
+        }
+    };
+
+    skeleton._updateBatch = function () {
+        if (this._nativeSkeleton) {
+            this._renderEntity.setUseLocal(!this.enableBatch);
+            this._nativeSkeleton.setBatchEnabled(this.enableBatch);
+            this.markForUpdateRenderData();
+        }
+    };
+
+    skeleton._updateUITransform = function () {
+        const skeletonData = this._skeletonData;
+        if (!skeletonData) return;
+
+        if (skeletonData.width != null && skeletonData.height != null) {
+            const uiTrans = this.node._uiProps.uiTransformComp;
+            uiTrans.setContentSize(skeletonData.width, skeletonData.height);
+        }
+    };
+
+    skeleton.setSkeletonData = function (skeletonData) {
+        // Force native init in jsb path. In spine4, runtime cache may be populated by wasm,
+        // which does not guarantee native SkeletonDataMgr registration.
+        if (typeof skeletonData.init === 'function') {
+            try {
+                console.log(`[spine4][jsb] before init call asset="${skeletonData?.name ?? ''}" nativeInited=${!!skeletonData?._nativeDataInited}`);
+            } catch (e) {
+                // ignore log errors
+            }
+            skeletonData.init();
+            try {
+                console.log(`[spine4][jsb] after init call asset="${skeletonData?.name ?? ''}" nativeInited=${!!skeletonData?._nativeDataInited} nativeUuid="${skeletonData?._nativeUuid ?? ''}"`);
+            } catch (e) {
+                // ignore log errors
+            }
+        }
+        ensureNativeSpine4Data(skeletonData);
+        if (!skeletonData._nativeUuid && typeof skeletonData.mergedUUID === 'function') {
+            skeletonData._nativeUuid = skeletonData.mergedUUID();
+        }
+        try {
+            console.log(`[spine4][jsb] setSkeletonData start asset="${skeletonData?.name ?? ''}" uuid="${skeletonData?._nativeUuid ?? ''}" merged="${skeletonData?.mergedUUID?.() ?? ''}" cacheMode=${this._cacheMode}`);
+        } catch (e) {
+            // ignore log errors
+        }
+        const uuid = skeletonData._nativeUuid || skeletonData.mergedUUID();
+        if (!uuid) {
+            cc.errorID(7504);
+            return;
+        }
+
+        const texValues = skeletonData.textures;
+        const texKeys = skeletonData.textureNames;
+        if (!(texValues && texValues.length > 0 && texKeys && texKeys.length > 0)) {
+            cc.errorID(7507, skeletonData.name);
+            return;
+        }
+
+        if (this._nativeSkeleton) {
+            this._nativeSkeleton.stopSchedule();
+            this._nativeSkeleton._comp = null;
+            this._nativeSkeleton = null;
+        }
+
+        let nativeSkeleton = null;
+        if (this.isAnimationCached()) {
+            nativeSkeleton = new spine.SkeletonCacheAnimation(uuid, this._cacheMode === AnimationCacheMode.SHARED_CACHE);
+        } else {
+            nativeSkeleton = new spine.SkeletonAnimation();
+            try {
+                let retained = spine.retainSkeletonData(uuid);
+                if (!retained && typeof skeletonData.init === 'function') {
+                    // Retry once by forcing re-init and then retaining again.
+                    skeletonData._nativeDataInited = false;
+                    skeletonData.init();
+                    ensureNativeSpine4Data(skeletonData);
+                    retained = spine.retainSkeletonData(uuid);
+                }
+                if (!retained) {
+                    console.error(`[spine4][jsb] retainSkeletonData failed for uuid="${uuid}" merged="${skeletonData?.mergedUUID?.() ?? ''}" nativeInited=${!!skeletonData._nativeDataInited}`);
+                }
+                spine.initSkeletonRenderer(nativeSkeleton, uuid);
+            } catch (e) {
+                cc._throw(e);
+                return;
+            }
+            try {
+                const spineKeys = Object.keys(spine).join(',');
+                console.log(`[spine4][jsb] initSkeletonRenderer done uuid="${uuid}" spineKeys=[${spineKeys}]`);
+            } catch (e) {
+                // ignore log errors
+            }
+            nativeSkeleton.setDebugSlotsEnabled(this.debugSlots);
+            nativeSkeleton.setDebugMeshEnabled(this.debugMesh);
+            nativeSkeleton.setDebugBonesEnabled(this.debugBones);
+        }
+
+        this._nativeSkeleton = nativeSkeleton;
+        nativeSkeleton._comp = this;
+        if (this.shouldSchedule) nativeSkeleton.beginSchedule();
+
+        nativeSkeleton.setUseTint(this.useTint);
+        nativeSkeleton.setOpacityModifyRGB(this.premultipliedAlpha);
+        nativeSkeleton.setTimeScale(this.timeScale);
+        nativeSkeleton.setBatchEnabled(this.enableBatch);
+        const compColor = this.color;
+        nativeSkeleton.setColor(compColor.r, compColor.g, compColor.b, compColor.a);
+        const materialTemplate = this.getMaterialTemplate();
+        nativeSkeleton.setMaterial(materialTemplate);
+        this._renderEntity.setUseLocal(!this.enableBatch);
+        nativeSkeleton.setRenderEntity(this._renderEntity.nativeObj);
+
+        this._skeleton = nativeSkeleton.getSkeleton();
+        if (!this._skeleton) {
+            console.error(`[spine4][jsb] nativeSkeleton.getSkeleton() returned null for uuid="${uuid}"`);
+        } else {
+            console.log(`[spine4][jsb] native skeleton created for uuid="${uuid}"`);
+        }
+
+        // init skeleton listener
+        this._startListener && this.setStartListener(this._startListener);
+        this._endListener && this.setEndListener(this._endListener);
+        this._completeListener && this.setCompleteListener(this._completeListener);
+        this._eventListener && this.setEventListener(this._eventListener);
+        this._interruptListener && this.setInterruptListener(this._interruptListener);
+        this._disposeListener && this.setDisposeListener(this._disposeListener);
+        this._sharedBufferOffset = nativeSkeleton.getSharedBufferOffset();
+        this._useAttach = false;
+
+        this.markForUpdateRenderData();
+    };
+
+    skeleton._updateColor = function () {
+        if (this._nativeSkeleton) {
+            const compColor = this._color;
+            this.setEntityColorDirty(true);
+            this.setEntityColor(compColor);
+            this._nativeSkeleton.setColor(compColor.r, compColor.g, compColor.b, compColor.a);
+            this.markForUpdateRenderData();
+        }
+    };
+
+    skeleton.setAnimationStateData = function (stateData) {
+        if (this._nativeSkeleton && !this.isAnimationCached()) {
+            this._stateData = stateData;
+            this._nativeSkeleton.setAnimationStateData(stateData);
+        }
+    };
+
+    const _onEnable = skeleton.onEnable;
+    skeleton.onEnable = function () {
+        if (_onEnable) {
+            _onEnable.call(this);
+        }
+        this.shouldSchedule = true;
+        if (this._nativeSkeleton) {
+            this._nativeSkeleton.onEnable();
+        }
+        middleware.retain();
+    };
+
+    const _onDisable = skeleton.onDisable;
+    skeleton.onDisable = function () {
+        if (_onDisable) {
+            _onDisable.call(this);
+        }
+
+        if (this._nativeSkeleton) {
+            this._nativeSkeleton.onDisable();
+        }
+        middleware.release();
+    };
+
+    skeleton.setVertexEffectDelegate = function (effectDelegate) {
+        if (cc.internal.SPINE4_VERSION === '4.2') {
+            cc.warn('setVertexEffectDelegate is deprecated since spine 4.2');
+            return;
+        }
+        if (this._nativeSkeleton && !this.isAnimationCached()) {
+            this._nativeSkeleton.setVertexEffectDelegate(effectDelegate);
+        }
+    };
+
+    skeleton.updateRenderData = function () {
+        if (this.isAnimationCached()) {
+            if (!this._curFrame) return null;
+            return this._curFrame.model;
+        }
+
+        // In JSB we drive rendering through native skeleton + render entity.
+        // _instance may remain null, so never touch _instance here.
+        if (this._nativeSkeleton) {
+            return null;
+        }
+
+        if (this._instance && this._instance.updateRenderData) {
+            return this._instance.updateRenderData();
+        }
+
+        if (!this._loggedMissingInstanceInUpdate) {
+            this._loggedMissingInstanceInUpdate = true;
+            console.warn('[spine4][jsb] updateRenderData skipped: no _nativeSkeleton and no _instance.');
+        }
+        return null;
+    };
+
+    // eslint-disable-next-line no-unused-vars
+    skeleton.updateAnimation = function (dt) {
+        const nativeSkeleton = this._nativeSkeleton;
+        if (!nativeSkeleton) return;
+
+        const node = this.node;
+        if (!node) return;
+
+        if (this.__preColor__ === undefined || !this.color.equals(this.__preColor__)) {
+            const compColor = this.color;
+            nativeSkeleton.setColor(compColor.r, compColor.g, compColor.b, compColor.a);
+            this.__preColor__ = compColor;
+        }
+
+        const socketNodes = this.socketNodes;
+        if (!this._useAttach && socketNodes.size > 0) {
+            this._useAttach = true;
+            nativeSkeleton.setAttachEnabled(true);
+        }
+    };
+
+    skeleton.updateWorldTransform = function () {
+        if (this._nativeSkeleton && !this.isAnimationCached()) {
+            this._nativeSkeleton.updateWorldTransform();
+        }
+    };
+
+    skeleton.setToSetupPose = function () {
+        if (this._nativeSkeleton) {
+            this._nativeSkeleton.setToSetupPose();
+        }
+    };
+
+    skeleton.setBonesToSetupPose = function () {
+        if (this._nativeSkeleton) {
+            this._nativeSkeleton.setBonesToSetupPose();
+        }
+    };
+
+    skeleton.setSlotsToSetupPose = function () {
+        if (this._nativeSkeleton) {
+            this._nativeSkeleton.setSlotsToSetupPose();
+        }
+    };
+
+    skeleton.setSlotsRange = function (startSlotIndex, endSlotIndex) {
+        if (this._nativeSkeleton && !this.isAnimationCached()) {
+            this._nativeSkeleton.setSlotsRange(startSlotIndex, endSlotIndex);
+        }
+    };
+
+    skeleton.updateAnimationCache = function (animName) {
+        if (!this.isAnimationCached()) return;
+        if (this._nativeSkeleton) {
+            if (animName) {
+                this._nativeSkeleton.updateAnimationCache(animName);
+            } else {
+                this._nativeSkeleton.updateAllAnimationCache();
+            }
+        }
+    };
+
+    skeleton.invalidAnimationCache = function () {
+        if (!this.isAnimationCached()) return;
+        if (this._nativeSkeleton) {
+            this._nativeSkeleton.updateAllAnimationCache();
+        }
+    };
+
+    skeleton.findBone = function (boneName) {
+        if (this._nativeSkeleton) return this._nativeSkeleton.findBone(boneName);
+        return null;
+    };
+
+    skeleton.findSlot = function (slotName) {
+        if (this._nativeSkeleton) return this._nativeSkeleton.findSlot(slotName);
+        return null;
+    };
+
+    skeleton.setSkin = function (skinName) {
+        this._skinName = skinName;
+        if (this._nativeSkeleton) return this._nativeSkeleton.setSkin(skinName);
+        return null;
+    };
+
+    skeleton.getAttachment = function (slotName, attachmentName) {
+        if (this._nativeSkeleton) return this._nativeSkeleton.getAttachment(slotName, attachmentName);
+        return null;
+    };
+
+    skeleton.setAttachment = function (slotName, attachmentName) {
+        this._nativeSkeleton && this._nativeSkeleton.setAttachment(slotName, attachmentName);
+    };
+
+    // eslint-disable-next-line no-unused-vars
+    skeleton.getTextureAtlas = function (regionAttachment) {
+        cc.warn('Spine Skeleton getTextureAtlas not support in native');
+        return null;
+    };
+
+    skeleton.setMix = function (fromAnimation, toAnimation, duration) {
+        if (this._nativeSkeleton && !this.isAnimationCached()) {
+            this._nativeSkeleton.setMix(fromAnimation, toAnimation, duration);
+        }
+    };
+
+    skeleton.setAnimation = function (trackIndex, name, loop) {
+        const strName = name.toString();
+        this._playTimes = loop ? 0 : 1;
+        let res = null;
+        if (this._nativeSkeleton) {
+            if (!this._nativeSkeleton.findAnimation(strName)) return res;
+            this._animationName = strName;
+            if (this.isAnimationCached()) {
+                res = this._nativeSkeleton.setAnimation(strName, loop);
+            } else {
+                res = this._nativeSkeleton.setAnimation(trackIndex, strName, loop);
+            }
+            /**
+             * note: since native spine animation update called after Director.EVENT_BEFORE_UPDATE
+             * and before setAnimation. it's need to update native animation to first frame directly.
+             */
+            this._nativeSkeleton.update(0);
+        }
+        return res;
+    };
+
+    skeleton.addAnimation = function (trackIndex, name, loop, delay) {
+        if (this._nativeSkeleton) {
+            delay = delay || 0;
+            if (this.isAnimationCached()) {
+                return this._nativeSkeleton.addAnimation(name, loop, delay);
+            } else {
+                return this._nativeSkeleton.addAnimation(trackIndex, name, loop, delay);
+            }
+        }
+        return null;
+    };
+
+    skeleton.findAnimation = function (name) {
+        if (this._nativeSkeleton) return this._nativeSkeleton.findAnimation(name);
+        return null;
+    };
+
+    skeleton.getCurrent = function (trackIndex) {
+        if (this._nativeSkeleton && !this.isAnimationCached()) {
+            return this._nativeSkeleton.getCurrent(trackIndex);
+        }
+        return null;
+    };
+
+    skeleton.clearTracks = function () {
+        if (this._nativeSkeleton && !this.isAnimationCached()) {
+            this._nativeSkeleton.clearTracks();
+        }
+    };
+
+    skeleton.clearTrack = function (trackIndex) {
+        if (this._nativeSkeleton && !this.isAnimationCached()) {
+            this._nativeSkeleton.clearTrack(trackIndex);
+        }
+    };
+
+    skeleton.setStartListener = function (listener) {
+        this._startListener = listener;
+        if (this._nativeSkeleton) {
+            if (this.isAnimationCached()) {
+                this._nativeSkeleton.setStartListener(function (animationName) {
+                    const self = this._comp;
+                    self._startEntry.animation.name = animationName;
+                    self._startListener && self._startListener(self._startEntry);
+                });
+            } else {
+                this._nativeSkeleton.setStartListener(listener);
+            }
+        }
+    };
+
+    skeleton.setInterruptListener = function (listener) {
+        this._interruptListener = listener;
+        if (this._nativeSkeleton && !this.isAnimationCached()) {
+            this._nativeSkeleton.setInterruptListener(listener);
+        }
+    };
+
+    skeleton.setEndListener = function (listener) {
+        this._endListener = listener;
+        if (this._nativeSkeleton) {
+            if (this.isAnimationCached()) {
+                this._nativeSkeleton.setEndListener(function (animationName) {
+                    const self = this._comp;
+                    self._endEntry.animation.name = animationName;
+                    self._endListener && self._endListener(self._endEntry);
+                });
+            } else {
+                this._nativeSkeleton.setEndListener(listener);
+            }
+        }
+    };
+
+    skeleton.setDisposeListener = function (listener) {
+        this._disposeListener = listener;
+        if (this._nativeSkeleton && !this.isAnimationCached()) {
+            this._nativeSkeleton.setDisposeListener(listener);
+        }
+    };
+
+    skeleton.setCompleteListener = function (listener) {
+        this._completeListener = listener;
+        if (this._nativeSkeleton) {
+            if (this.isAnimationCached()) {
+                this._nativeSkeleton.setCompleteListener(function (animationName) {
+                    const self = this._comp;
+                    self._endEntry.animation.name = animationName;
+                    self._completeListener && self._completeListener(self._endEntry);
+                });
+            } else {
+                this._nativeSkeleton.setCompleteListener(listener);
+            }
+        }
+    };
+
+    skeleton.setEventListener = function (listener) {
+        this._eventListener = listener;
+        if (this._nativeSkeleton && !this.isAnimationCached()) {
+            this._nativeSkeleton.setEventListener(listener);
+        }
+    };
+
+    skeleton.setTrackStartListener = function (entry, listener) {
+        if (this._nativeSkeleton && !this.isAnimationCached()) {
+            this._nativeSkeleton.setTrackStartListener(entry, listener);
+        }
+    };
+
+    skeleton.setTrackInterruptListener = function (entry, listener) {
+        if (this._nativeSkeleton && !this.isAnimationCached()) {
+            this._nativeSkeleton.setTrackInterruptListener(entry, listener);
+        }
+    };
+
+    skeleton.setTrackEndListener = function (entry, listener) {
+        if (this._nativeSkeleton && !this.isAnimationCached()) {
+            this._nativeSkeleton.setTrackEndListener(entry, listener);
+        }
+    };
+
+    skeleton.setTrackDisposeListener = function (entry, listener) {
+        if (this._nativeSkeleton && !this.isAnimationCached()) {
+            this._nativeSkeleton.setTrackDisposeListener(entry, listener);
+        }
+    };
+
+    skeleton.setTrackCompleteListener = function (entry, listener) {
+        if (this._nativeSkeleton && !this.isAnimationCached()) {
+            this._nativeSkeleton.setTrackCompleteListener(entry, listener);
+        }
+    };
+
+    skeleton.setTrackEventListener = function (entry, listener) {
+        if (this._nativeSkeleton && !this.isAnimationCached()) {
+            this._nativeSkeleton.setTrackEventListener(entry, listener);
+        }
+    };
+
+    skeleton.getState = function () {
+        if (this._nativeSkeleton && !this.isAnimationCached()) {
+            return this._nativeSkeleton.getState();
+        }
+        return null;
+    };
+
+    skeleton._ensureListener = function () {
+        cc.warn('Spine Skeleton _ensureListener not need in native');
+    };
+
+    skeleton._updateSkeletonData = function () {
+        if (this.skeletonData) {
+            this.skeletonData.init();
+            const runtimeData = typeof this.skeletonData.getRuntimeData === 'function' ? this.skeletonData.getRuntimeData() : null;
+            const wantPma = resolvePremultipliedAlpha(this._premultipliedAlpha, this.skeletonData, runtimeData);
+            if (wantPma !== this._premultipliedAlpha) {
+                this.premultipliedAlpha = wantPma;
+            }
+            this.setSkeletonData(this.skeletonData);
+
+            if (this.defaultSkin && this.defaultSkin !== '') {
+                this.setSkin(this.defaultSkin);
+            } else if (this._skinName && this._skinName !== '') {
+                this.setSkin(this._skinName);
+            }
+            if (this.defaultAnimation) {
+                this.animation = this.defaultAnimation;
+            } else if (this._animationName) {
+                this.animation = this._animationName;
+            } else {
+                this.animation = '';
+            }
+        } else if (this._nativeSkeleton) {
+            this._nativeSkeleton.stopSchedule();
+            this._nativeSkeleton._comp = null;
+            this._nativeSkeleton = null;
+        }
+
+        this._indexBoneSockets();
+        this._updateSocketBindings();
+        this.attachUtil.init(this);
+        this._preCacheMode = this._cacheMode;
+    };
+
+    const _onDestroy = skeleton.onDestroy;
+    skeleton.onDestroy = function () {
+        _onDestroy.call(this);
+        if (this._nativeSkeleton) {
+            this._nativeSkeleton.setRenderEntity(null);
+            this._nativeSkeleton.stopSchedule();
+            this._nativeSkeleton._comp = null;
+            this._nativeSkeleton = null;
+        }
+        this._stateData = null;
+    };
+
+    skeleton._render = function () {
+        const nativeSkeleton = this._nativeSkeleton;
+        if (!nativeSkeleton) return;
+
+        if (!this.isAnimationCached() && (this.debugBones || this.debugSlots || this.debugMesh) && this._debugRenderer) {
+            const graphics = this._debugRenderer;
+            graphics.clear();
+            graphics.lineWidth = 5;
+
+            const debugData = this._debugData || nativeSkeleton.getDebugData();
+            if (!debugData) return;
+            let debugIdx = 0; let debugType = 0; let debugLen = 0;
+
+            debugType = debugData[debugIdx++];
+            while (debugType !== 0) {
+                debugLen = debugData[debugIdx++];
+
+                switch (debugType) {
+                    case 1: // slots
+                        graphics.strokeColor = _slotColor;
+                        for (let i = 0; i < debugLen; i += 8) {
+                            graphics.moveTo(debugData[debugIdx++], debugData[debugIdx++]);
+                            graphics.lineTo(debugData[debugIdx++], debugData[debugIdx++]);
+                            graphics.lineTo(debugData[debugIdx++], debugData[debugIdx++]);
+                            graphics.lineTo(debugData[debugIdx++], debugData[debugIdx++]);
+                            graphics.close();
+                            graphics.stroke();
+                        }
+                    break;
+                    case 2: // mesh
+                        graphics.strokeColor = _meshColor;
+                        for (let i = 0; i < debugLen; i += 6) {
+                            graphics.moveTo(debugData[debugIdx++], debugData[debugIdx++]);
+                            graphics.lineTo(debugData[debugIdx++], debugData[debugIdx++]);
+                            graphics.lineTo(debugData[debugIdx++], debugData[debugIdx++]);
+                            graphics.close();
+                            graphics.stroke();
+                        }
+                    break;
+                    case 3: // bones
+                        graphics.strokeColor = _boneColor;
+                        graphics.fillColor = _slotColor; // Root bone color is same as slot color.
+                        for (let i = 0; i < debugLen; i += 4) {
+                            const bx = debugData[debugIdx++];
+                            const by = debugData[debugIdx++];
+                            const x = debugData[debugIdx++];
+                            const y = debugData[debugIdx++];
+
+                            // Bone lengths.
+                            graphics.moveTo(bx, by);
+                            graphics.lineTo(x, y);
+                            graphics.stroke();
+
+                            // Bone origins.
+                            graphics.circle(bx, by, Math.PI * 1.5);
+                            graphics.fill();
+                            if (i === 0) {
+                                graphics.fillColor = _originColor;
+                            }
+                        }
+                    break;
+                    default:
+                    return;
+                }
+                debugType = debugData[debugIdx++];
+            }
+        }
+    };
+
+    const _tempAttachMat4 = cc.mat4();
+    skeleton.syncAttachedNode = function () {
+        const nativeSkeleton = this._nativeSkeleton;
+        if (!nativeSkeleton) return;
+        const socketNodes = this.socketNodes;
+        if (socketNodes.size > 0 && this._useAttach) {
+            const sharedBufferOffset = this._sharedBufferOffset;
+            if (!sharedBufferOffset) return;
+            const attachInfoMgr = middleware.attachInfoMgr;
+            const attachInfo = attachInfoMgr.attachInfo;
+
+            const attachInfoOffset = sharedBufferOffset[0];
+            // reset attach info offset
+            sharedBufferOffset[0] = 0;
+            for (const boneIdx of socketNodes.keys()) {
+                const boneNode = socketNodes.get(boneIdx);
+                // Node has been destroy
+                if (!boneNode || !boneNode.isValid) {
+                    socketNodes.delete(boneIdx);
+                    continue;
+                }
+
+                const tm = _tempAttachMat4;
+                const matOffset = attachInfoOffset + boneIdx * 16;
+                tm.m00 = attachInfo[matOffset];
+                tm.m01 = attachInfo[matOffset + 1];
+                tm.m04 = attachInfo[matOffset + 4];
+                tm.m05 = attachInfo[matOffset + 5];
+                tm.m12 = attachInfo[matOffset + 12];
+                tm.m13 = attachInfo[matOffset + 13];
+                boneNode.matrix = tm;
+            }
+        }
+    };
+
+    skeleton.setSlotTexture = function (slotName, tex2d, createNew) {
+        if (this.isAnimationCached()) {
+            console.error(`Cached mode can't change texture of slot`);
+            return;
+        }
+        if (!this._nativeSkeleton) return;
+        const slot = this.findSlot(slotName);
+        if (!slot) {
+            console.error(`No slot named:${slotName}`);
+            return;
+        }
+        const createNewAttachment = createNew || false;
+        this._nativeSkeleton.setSlotTexture(slotName, tex2d, createNewAttachment);
+    };
+
+    //////////////////////////////////////////
+    // assembler
+    const assembler = cc.internal.SpineAssembler;
+
+    // eslint-disable-next-line no-unused-vars
+    assembler.createData = function (comp) {
+    };
+
+    assembler.updateRenderData = function (comp) {
+        comp._render();
+        comp.syncAttachedNode();
+    };
+
+    // eslint-disable-next-line no-unused-vars
+    assembler.fillBuffers = function (comp, renderer) {
+    };
+}());

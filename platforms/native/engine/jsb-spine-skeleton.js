@@ -150,6 +150,110 @@ const cacheManager = require('./jsb-cache-manager');
         return _textureMap.get(texKey);
     };
 
+    function readSlotBlendMode (slotData) {
+        if (!slotData) return null;
+        if (slotData.blendMode != null) return slotData.blendMode;
+        if (slotData.data && slotData.data.blendMode != null) return slotData.data.blendMode;
+        if (typeof slotData.getBlendMode === 'function') return slotData.getBlendMode();
+        return null;
+    }
+
+    function getRuntimeSlots (runtimeData) {
+        const slots = runtimeData && runtimeData.slots;
+        if (!slots) return [];
+        if (Array.isArray(slots)) return slots;
+        if (typeof slots.size === 'function' && typeof slots.get === 'function') {
+            const result = [];
+            const count = slots.size();
+            for (let i = 0; i < count; ++i) result.push(slots.get(i));
+            return result;
+        }
+        return [];
+    }
+
+    function hasScreenBlendMode (runtimeData) {
+        const screenEnum = spine && spine.BlendMode ? spine.BlendMode.Screen : 3;
+        const slots = getRuntimeSlots(runtimeData);
+        for (let i = 0; i < slots.length; ++i) {
+            const blendMode = readSlotBlendMode(slots[i]);
+            if (blendMode === screenEnum || blendMode === 3 || blendMode === 'screen' || blendMode === 'Screen') {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    function hasAtlasPmaFlag (skeletonData) {
+        const pages = skeletonData && skeletonData._atlasCache && skeletonData._atlasCache.pages;
+        return Array.isArray(pages) && pages.some((p) => !!(p && p.pma));
+    }
+
+    function hasScreenBlendModeInSkeletonJson (skeletonData) {
+        const slots = skeletonData && skeletonData._skeletonJson && skeletonData._skeletonJson.slots;
+        if (!Array.isArray(slots)) return false;
+        for (let i = 0; i < slots.length; ++i) {
+            const blendMode = slots[i] && slots[i].blend;
+            if (blendMode === 'screen' || blendMode === 'Screen' || blendMode === 3) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    function getMethodIfCallable (obj, methodName) {
+        let proto = obj;
+        while (proto) {
+            const desc = Object.getOwnPropertyDescriptor(proto, methodName);
+            if (desc) {
+                return typeof desc.value === 'function' ? desc.value : null;
+            }
+            proto = Object.getPrototypeOf(proto);
+        }
+        return null;
+    }
+
+    function ensureTexturesPremultiplied (skeletonData) {
+        const textures = skeletonData && skeletonData.textures;
+        if (!Array.isArray(textures) || textures.length === 0) {
+            return false;
+        }
+        let hasValidTexture = false;
+        let allPrepared = true;
+        for (let i = 0; i < textures.length; ++i) {
+            const texture = textures[i];
+            if (!texture) {
+                continue;
+            }
+            hasValidTexture = true;
+            let hasPma = false;
+            const hasPremultipliedAlpha = getMethodIfCallable(texture, 'hasPremultipliedAlpha');
+            const setPremultiplyAlpha = getMethodIfCallable(texture, 'setPremultiplyAlpha');
+            if (hasPremultipliedAlpha) {
+                hasPma = !!hasPremultipliedAlpha.call(texture);
+            }
+            if (!hasPma && setPremultiplyAlpha) {
+                setPremultiplyAlpha.call(texture, true);
+                if (hasPremultipliedAlpha) {
+                    hasPma = !!hasPremultipliedAlpha.call(texture);
+                }
+            }
+            if (!hasPma) {
+                allPrepared = false;
+            }
+        }
+        return hasValidTexture && allPrepared;
+    }
+
+    function resolvePremultipliedAlpha (current, skeletonData, runtimeData) {
+        if (hasAtlasPmaFlag(skeletonData)) {
+            return true;
+        }
+        if (hasScreenBlendMode(runtimeData) || hasScreenBlendModeInSkeletonJson(skeletonData)) {
+            return ensureTexturesPremultiplied(skeletonData);
+        }
+        return false;
+    }
+
     const animation = spine.SkeletonAnimation.prototype;
     // The methods are added to be compatibility with old versions.
     animation.setCompleteListener = function (listener) {
@@ -696,6 +800,11 @@ const cacheManager = require('./jsb-cache-manager');
     skeleton._updateSkeletonData = function () {
         if (this.skeletonData) {
             this.skeletonData.init();
+            const runtimeData = typeof this.skeletonData.getRuntimeData === 'function' ? this.skeletonData.getRuntimeData() : null;
+            const wantPma = resolvePremultipliedAlpha(this._premultipliedAlpha, this.skeletonData, runtimeData);
+            if (wantPma !== this._premultipliedAlpha) {
+                this.premultipliedAlpha = wantPma;
+            }
             this.setSkeletonData(this.skeletonData);
 
             if (this.defaultSkin && this.defaultSkin !== '') {

@@ -48,7 +48,7 @@ void setSpineObjectDisposeCallback(SpineObjectDisposeCallback callback) {
 USING_NS_MW;           // NOLINT(google-build-using-namespace)
 using namespace cc;    // NOLINT(google-build-using-namespace)
 using namespace cc::spine4; // NOLINT(google-build-using-namespace)
-using namespace spine4; // NOLINT(google-build-using-namespace)
+using namespace ::spine4; // NOLINT(google-build-using-namespace)
 
 Cocos2dAtlasAttachmentLoader::Cocos2dAtlasAttachmentLoader(Atlas *atlas) : AtlasAttachmentLoader(atlas) {
 }
@@ -70,7 +70,7 @@ uint32_t filter(TextureFilter filter) {
 Cocos2dTextureLoader::Cocos2dTextureLoader() = default;
 Cocos2dTextureLoader::~Cocos2dTextureLoader() = default;
 
-void Cocos2dTextureLoader::load(AtlasPage &page, const spine4::String &path) {
+void Cocos2dTextureLoader::load(AtlasPage &page, const ::spine4::String &path) {
     middleware::Texture2D *texture = nullptr;
     if (customTextureLoader) {
         texture = customTextureLoader(path.buffer());
@@ -103,7 +103,7 @@ Cocos2dExtension::Cocos2dExtension() = default;
 
 Cocos2dExtension::~Cocos2dExtension() = default;
 
-char *Cocos2dExtension::_readFile(const spine4::String &path, int *length) {
+char *Cocos2dExtension::_readFile(const ::spine4::String &path, int *length) {
     *length = 0;
     Data data = FileUtils::getInstance()->getDataFromFile(FileUtils::getInstance()->fullPathForFilename(path.buffer()));
     if (data.isNull()) return nullptr;
@@ -114,7 +114,7 @@ char *Cocos2dExtension::_readFile(const spine4::String &path, int *length) {
     return ret;
 }
 
-SpineExtension *spine4::getDefaultExtension() {
+SpineExtension *::spine4::getDefaultExtension() {
     return new Cocos2dExtension();
 }
 

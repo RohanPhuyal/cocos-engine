@@ -34,9 +34,9 @@
 
 USING_NS_MW;        // NOLINT(google-build-using-namespace)
 using namespace cc; // NOLINT(google-build-using-namespace)
-using namespace spine4;
+using namespace ::spine4;
 
-extern "C" AttachmentVertices *generateAttachmentVertices(Attachment *attachment);
+extern "C" cc::spine4::AttachmentVertices *generateAttachmentVerticesSpine4(::spine4::Attachment *attachment);
 
 namespace cc::spine4 {
 
@@ -333,7 +333,7 @@ void SkeletonCache::renderAnimationFrame(AnimationData *animationData) {
             _clipper->clipEnd(*slot);
             continue;
         }
-        const spine4::Color &slotColor = slot->getColor();
+        const ::spine4::Color &slotColor = slot->getColor();
 
         auto iterAttachment = attachmentVerticesMap.find(tmpAttachment);
         if (iterAttachment != attachmentVerticesMap.end()) {
@@ -343,14 +343,14 @@ void SkeletonCache::renderAnimationFrame(AnimationData *animationData) {
         }
 
         TwoColorTriangles trianglesTwoColor;
-        spine4::Color attachmentColor;
+        ::spine4::Color attachmentColor;
         if (tmpAttachment->getRTTI().isExactly(RegionAttachment::rtti)) {
             auto *attachment = dynamic_cast<RegionAttachment *>(tmpAttachment);
 #if 1
             if (!attachment->getRegion()) {
                 attachment->getSequence()->apply(slot, attachment);
                 if (attachment->getRegion()) {
-                    attachmentVertices = generateAttachmentVertices(attachment);
+                    attachmentVertices = generateAttachmentVerticesSpine4(attachment);
                     if (attachmentVertices) {
                         attachmentVerticesMap[attachment] = attachmentVertices;
                     }
@@ -391,7 +391,7 @@ void SkeletonCache::renderAnimationFrame(AnimationData *animationData) {
             if (!attachment->getRegion()) {
                 attachment->getSequence()->apply(slot, attachment);
                 if (attachment->getRegion()) {
-                    attachmentVertices = generateAttachmentVertices(attachment);
+                    attachmentVertices = generateAttachmentVerticesSpine4(attachment);
                     if (attachmentVertices) {
                         attachmentVerticesMap[attachment] = attachmentVertices;
                     }

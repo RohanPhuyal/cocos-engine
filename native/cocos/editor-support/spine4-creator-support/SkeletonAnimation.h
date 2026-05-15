@@ -35,39 +35,39 @@
 namespace cc::spine4 {
 
 struct CacheEventInfo {
-  spine4::EventType type{spine4::EventType::EventType_Start};
-  spine4::TrackEntry *entry{nullptr};
-  spine4::Event *event{nullptr};
+  ::spine4::EventType type{::spine4::EventType::EventType_Start};
+  ::spine4::TrackEntry *entry{nullptr};
+  ::spine4::Event *event{nullptr};
 };
-typedef std::function<void(spine4::TrackEntry *entry)> StartListener;
-typedef std::function<void(spine4::TrackEntry *entry)> InterruptListener;
-typedef std::function<void(spine4::TrackEntry *entry)> EndListener;
-typedef std::function<void(spine4::TrackEntry *entry)> DisposeListener;
-typedef std::function<void(spine4::TrackEntry *entry)> CompleteListener;
-typedef std::function<void(spine4::TrackEntry *entry, spine4::Event *event)> EventListener;
+typedef std::function<void(::spine4::TrackEntry *entry)> StartListener;
+typedef std::function<void(::spine4::TrackEntry *entry)> InterruptListener;
+typedef std::function<void(::spine4::TrackEntry *entry)> EndListener;
+typedef std::function<void(::spine4::TrackEntry *entry)> DisposeListener;
+typedef std::function<void(::spine4::TrackEntry *entry)> CompleteListener;
+typedef std::function<void(::spine4::TrackEntry *entry, ::spine4::Event *event)> EventListener;
 
 /** Draws an animated skeleton, providing an AnimationState for applying one or more animations and queuing animations to be
   * played later. */
 class SkeletonAnimation : public cc::spine4::SkeletonRenderer {
 public:
     static SkeletonAnimation *create();
-    static SkeletonAnimation *createWithData(spine4::SkeletonData *skeletonData, bool ownsSkeletonData = false);
+    static SkeletonAnimation *createWithData(::spine4::SkeletonData *skeletonData, bool ownsSkeletonData = false);
     static SkeletonAnimation *createWithJsonFile(const std::string &skeletonJsonFile, const std::string &atlasFile, float scale = 1);
     static SkeletonAnimation *createWithBinaryFile(const std::string &skeletonBinaryFile, const std::string &atlasFile, float scale = 1);
     static void setGlobalTimeScale(float timeScale);
 
     virtual void update(float deltaTime) override;
 
-    void setAnimationStateData(spine4::AnimationStateData *stateData);
+    void setAnimationStateData(::spine4::AnimationStateData *stateData);
     void setMix(const std::string &fromAnimation, const std::string &toAnimation, float duration);
 
-    spine4::TrackEntry *setAnimation(int trackIndex, const std::string &name, bool loop);
-    spine4::TrackEntry *addAnimation(int trackIndex, const std::string &name, bool loop, float delay = 0);
-    spine4::TrackEntry *setEmptyAnimation(int trackIndex, float mixDuration);
+    ::spine4::TrackEntry *setAnimation(int trackIndex, const std::string &name, bool loop);
+    ::spine4::TrackEntry *addAnimation(int trackIndex, const std::string &name, bool loop, float delay = 0);
+    ::spine4::TrackEntry *setEmptyAnimation(int trackIndex, float mixDuration);
     void setEmptyAnimations(float mixDuration);
-    spine4::TrackEntry *addEmptyAnimation(int trackIndex, float mixDuration, float delay = 0);
-    spine4::Animation *findAnimation(const std::string &name) const;
-    spine4::TrackEntry *getCurrent(int trackIndex = 0);
+    ::spine4::TrackEntry *addEmptyAnimation(int trackIndex, float mixDuration, float delay = 0);
+    ::spine4::Animation *findAnimation(const std::string &name) const;
+    ::spine4::TrackEntry *getCurrent(int trackIndex = 0);
     void clearTracks();
     void clearTrack(int trackIndex = 0);
 
@@ -78,21 +78,21 @@ public:
     void setCompleteListener(const CompleteListener &listener);
     void setEventListener(const EventListener &listener);
 
-    void setTrackStartListener(spine4::TrackEntry *entry, const StartListener &listener);
-    void setTrackInterruptListener(spine4::TrackEntry *entry, const InterruptListener &listener);
-    void setTrackEndListener(spine4::TrackEntry *entry, const EndListener &listener);
-    void setTrackDisposeListener(spine4::TrackEntry *entry, const DisposeListener &listener);
-    void setTrackCompleteListener(spine4::TrackEntry *entry, const CompleteListener &listener);
-    void setTrackEventListener(spine4::TrackEntry *entry, const EventListener &listener);
+    void setTrackStartListener(::spine4::TrackEntry *entry, const StartListener &listener);
+    void setTrackInterruptListener(::spine4::TrackEntry *entry, const InterruptListener &listener);
+    void setTrackEndListener(::spine4::TrackEntry *entry, const EndListener &listener);
+    void setTrackDisposeListener(::spine4::TrackEntry *entry, const DisposeListener &listener);
+    void setTrackCompleteListener(::spine4::TrackEntry *entry, const CompleteListener &listener);
+    void setTrackEventListener(::spine4::TrackEntry *entry, const EventListener &listener);
 
-    virtual void onAnimationStateEvent(spine4::TrackEntry *entry, spine4::EventType type, spine4::Event *event);
-    virtual void onTrackEntryEvent(spine4::TrackEntry *entry, spine4::EventType type, spine4::Event *event);
+    virtual void onAnimationStateEvent(::spine4::TrackEntry *entry, ::spine4::EventType type, ::spine4::Event *event);
+    virtual void onTrackEntryEvent(::spine4::TrackEntry *entry, ::spine4::EventType type, ::spine4::Event *event);
 
-    void cacheAnimationEvent(spine4::TrackEntry *entry, spine4::EventType type, spine4::Event *event);
-    void cacheTrackEvent(spine4::TrackEntry *entry, spine4::EventType type, spine4::Event *event);
+    void cacheAnimationEvent(::spine4::TrackEntry *entry, ::spine4::EventType type, ::spine4::Event *event);
+    void cacheTrackEvent(::spine4::TrackEntry *entry, ::spine4::EventType type, ::spine4::Event *event);
     void dispatchEvents();
 
-    spine4::AnimationState *getState() const;
+    ::spine4::AnimationState *getState() const;
 
     SkeletonAnimation();
     virtual ~SkeletonAnimation();
@@ -102,7 +102,7 @@ public:
     static float GlobalTimeScale;
 
 protected:
-    spine4::AnimationState *_state = nullptr;
+    ::spine4::AnimationState *_state = nullptr;
     bool _ownsAnimationStateData = false;
     StartListener _startListener = nullptr;
     InterruptListener _interruptListener = nullptr;

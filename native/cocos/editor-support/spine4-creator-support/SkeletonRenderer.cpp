@@ -46,7 +46,7 @@
 
 
 USING_NS_MW;             // NOLINT(google-build-using-namespace)
-using namespace spine4;   // NOLINT(google-build-using-namespace)
+using namespace ::spine4; // NOLINT(google-build-using-namespace)
 using namespace cc;      // NOLINT(google-build-using-namespace)
 using namespace cc::gfx; // NOLINT(google-build-using-namespace)
 
@@ -56,7 +56,7 @@ using std::min;
 static const std::string TECH_STAGE = "opaque";
 static const std::string TEXTURE_KEY = "texture";
 
-static Cocos2dTextureLoader textureLoader;
+static cc::spine4::Cocos2dTextureLoader textureLoader;
 
 enum DebugType {
     NONE = 0,
@@ -65,7 +65,7 @@ enum DebugType {
     BONES
 };
 
-extern "C" AttachmentVertices *generateAttachmentVertices(Attachment *attachment);
+extern "C" cc::spine4::AttachmentVertices *generateAttachmentVerticesSpine4(::spine4::Attachment *attachment);
 namespace cc::spine4 {
 
 /**
@@ -112,7 +112,7 @@ void SkeletonRenderer::initialize() {
 #if 0
     _skeleton->updateWorldTransform();
 #else
-    _skeleton->updateWorldTransform(spine4::Physics::Physics_Pose);
+    _skeleton->updateWorldTransform(::spine4::Physics::Physics_Pose);
 #endif
 }
 
@@ -479,7 +479,7 @@ void SkeletonRenderer::render(float /*deltaTime*/) {
             if (!attachment->getRegion()) {
                 attachment->getSequence()->apply(slot, attachment);
                 if (attachment->getRegion()) {
-                    attachmentVertices = generateAttachmentVertices(attachment);
+                    attachmentVertices = generateAttachmentVerticesSpine4(attachment);
                     if (attachmentVertices) {
                         attachmentVerticesMap[attachment] = attachmentVertices;
                     }
@@ -556,7 +556,7 @@ void SkeletonRenderer::render(float /*deltaTime*/) {
             if (!attachment->getRegion()) {
                 attachment->getSequence()->apply(slot, attachment);
                 if (attachment->getRegion()) {
-                    attachmentVertices = generateAttachmentVertices(attachment);
+                    attachmentVertices = generateAttachmentVerticesSpine4(attachment);
                     if (attachmentVertices) {
                         attachmentVerticesMap[attachment] = attachmentVertices;
                     }
@@ -982,14 +982,14 @@ void SkeletonRenderer::setSlotsToSetupPose() {
     }
 }
 
-spine4::Bone *SkeletonRenderer::findBone(const std::string &boneName) const {
+::spine4::Bone *SkeletonRenderer::findBone(const std::string &boneName) const {
     if (_skeleton) {
         return _skeleton->findBone(boneName.c_str());
     }
     return nullptr;
 }
 
-spine4::Slot *SkeletonRenderer::findSlot(const std::string &slotName) const {
+::spine4::Slot *SkeletonRenderer::findSlot(const std::string &slotName) const {
     if (_skeleton) {
         return _skeleton->findSlot(slotName.c_str());
     }
@@ -1010,7 +1010,7 @@ void SkeletonRenderer::setSkin(const char *skinName) {
     }
 }
 
-spine4::Attachment *SkeletonRenderer::getAttachment(const std::string &slotName, const std::string &attachmentName) const {
+::spine4::Attachment *SkeletonRenderer::getAttachment(const std::string &slotName, const std::string &attachmentName) const {
     if (_skeleton) {
         return _skeleton->getAttachment(slotName.c_str(), attachmentName.c_str());
     }
@@ -1051,7 +1051,7 @@ void SkeletonRenderer::setSlotsRange(int startSlotIndex, int endSlotIndex) {
     this->_endSlotIndex = endSlotIndex;
 }
 
-spine4::Skeleton *SkeletonRenderer::getSkeleton() const {
+::spine4::Skeleton *SkeletonRenderer::getSkeleton() const {
     return _skeleton;
 }
 
@@ -1182,7 +1182,7 @@ void SkeletonRenderer::setSlotTexture(const std::string &slotName, cc::Texture2D
         attachment = attachment->copy();
     }
     SlotCacheInfo slotCacheInfo{createAttachment, attachment, nullptr};
-    if (attachment->getRTTI().isExactly(spine4::RegionAttachment::rtti)) {
+    if (attachment->getRTTI().isExactly(::spine4::RegionAttachment::rtti)) {
         auto region = static_cast<RegionAttachment *>(attachment);
 #if 0
         region->setRegionWidth(width);
@@ -1233,7 +1233,7 @@ void SkeletonRenderer::setSlotTexture(const std::string &slotName, cc::Texture2D
             vertices[i].texCoord.u = UVs[ii];
             vertices[i].texCoord.v = UVs[ii + 1];
         }
-    } else if (attachment->getRTTI().isExactly(spine4::MeshAttachment::rtti)) {
+    } else if (attachment->getRTTI().isExactly(::spine4::MeshAttachment::rtti)) {
         auto mesh = static_cast<MeshAttachment *>(attachment);
 #if 0
         mesh->setRegionWidth(width);

@@ -7,6 +7,10 @@
 // Disable some swig warnings, find warning number reference here ( https://www.swig.org/Doc4.1/Warnings.html )
 #pragma SWIG nowarn=503,302,401,317,402
 
+%insert(runtime) %{
+#define CC_SKIP_SPINE_JSB_CONVERSIONS 1
+%}
+
 // Insert code at the beginning of generated header file (.h)
 %insert(header_file) %{
 #pragma once
@@ -25,6 +29,180 @@
 using namespace spine4;
 
 #define SWIGINTERN static
+
+inline bool nativevalue_to_se(const ::spine4::String &from, se::Value &to, se::Object * /*ctx*/) { // NOLINT(readability-identifier-naming)
+    to.setString(from.buffer());
+    return true;
+}
+
+inline bool sevalue_to_native(const se::Value &from, ::spine4::String *to, se::Object * /*ctx*/) { // NOLINT(readability-identifier-naming)
+    if (!from.isString()) {
+        return false;
+    }
+    *to = ::spine4::String(from.toString().c_str());
+    return true;
+}
+
+inline bool sevalue_to_native(const se::Value &from, ::spine4::Vector2 *to, se::Object *ctx) { // NOLINT(readability-identifier-naming)
+    cc::Vec2 tmp{};
+    if (!sevalue_to_native(from, &tmp, ctx)) {
+        return false;
+    }
+    to->set(tmp.x, tmp.y);
+    return true;
+}
+
+inline bool nativevalue_to_se(const ::spine4::Vector2 &from, se::Value &to, se::Object *ctx) { // NOLINT(readability-identifier-naming)
+    return nativevalue_to_se(cc::Vec2{from.x, from.y}, to, ctx);
+}
+
+inline bool sevalue_to_native(const se::Value &from, cc::spine4::AttachmentVertices **to, se::Object * /*ctx*/) { // NOLINT(readability-identifier-naming)
+    if (from.isNullOrUndefined()) {
+        *to = nullptr;
+        return true;
+    }
+    if (!from.isObject()) {
+        return false;
+    }
+    *to = static_cast<cc::spine4::AttachmentVertices *>(from.toObject()->getPrivateData());
+    return true;
+}
+
+inline bool sevalue_to_native(const se::Value &from, cc::Material **to, se::Object * /*ctx*/) { // NOLINT(readability-identifier-naming)
+    if (from.isNullOrUndefined()) {
+        *to = nullptr;
+        return true;
+    }
+    if (!from.isObject()) {
+        return false;
+    }
+    *to = static_cast<cc::Material *>(from.toObject()->getPrivateData());
+    return true;
+}
+
+inline bool sevalue_to_native(const se::Value &from, cc::RenderEntity **to, se::Object * /*ctx*/) { // NOLINT(readability-identifier-naming)
+    if (from.isNullOrUndefined()) {
+        *to = nullptr;
+        return true;
+    }
+    if (!from.isObject()) {
+        return false;
+    }
+    *to = static_cast<cc::RenderEntity *>(from.toObject()->getPrivateData());
+    return true;
+}
+
+template <typename T>
+inline bool nativevalue_to_se(const ::spine4::Vector<T> &from, se::Value &to, se::Object * /*ctx*/) { // NOLINT(readability-identifier-naming)
+    se::HandleObject obj(se::Object::createArrayObject(from.size()));
+    bool ok = true;
+    auto size = static_cast<uint32_t>(from.size());
+    for (uint32_t i = 0; i < size; ++i) {
+        se::Value item;
+        ok = nativevalue_to_se(from[i], item, nullptr);
+        if (!ok || !obj->setArrayElement(i, item)) {
+            to.setUndefined();
+            return false;
+        }
+    }
+    to.setObject(obj);
+    return true;
+}
+
+template <typename T>
+inline bool nativevalue_to_se(const ::spine4::Vector<T *> &from, se::Value &to, se::Object * /*ctx*/) { // NOLINT(readability-identifier-naming)
+    se::HandleObject obj(se::Object::createArrayObject(from.size()));
+    bool ok = true;
+    auto size = static_cast<uint32_t>(from.size());
+    for (uint32_t i = 0; i < size; ++i) {
+        se::Value item;
+        ok = native_ptr_to_seval<T>(from[i], &item);
+        if (!ok || !obj->setArrayElement(i, item)) {
+            to.setUndefined();
+            return false;
+        }
+    }
+    to.setObject(obj);
+    return true;
+}
+
+template <typename T>
+inline bool sevalue_to_native(const se::Value &from, ::spine4::Vector<T *> *to, se::Object * /*ctx*/) { // NOLINT(readability-identifier-naming)
+    CC_ASSERT_NOT_NULL(to);
+    if (!from.isObject() || !from.toObject()->isArray()) {
+        return false;
+    }
+    auto *obj = from.toObject();
+    uint32_t length = 0;
+    if (!obj->getArrayLength(&length)) {
+        to->clear();
+        return false;
+    }
+
+    se::Value item;
+    for (uint32_t i = 0; i < length; ++i) {
+        if (!obj->getArrayElement(i, &item) || !item.isObject()) {
+            to->clear();
+            return false;
+        }
+        auto *native = static_cast<T *>(item.toObject()->getPrivateData());
+        to->add(native);
+    }
+    return true;
+}
+
+template <typename T, typename = std::enable_if_t<std::is_arithmetic_v<T>>>
+inline bool sevalue_to_native(const se::Value &from, ::spine4::Vector<T> *to, se::Object * /*ctx*/) { // NOLINT(readability-identifier-naming)
+    CC_ASSERT_NOT_NULL(to);
+    if (!from.isObject() || !from.toObject()->isArray()) {
+        return false;
+    }
+    auto *obj = from.toObject();
+    uint32_t length = 0;
+    if (!obj->getArrayLength(&length)) {
+        to->clear();
+        return false;
+    }
+
+    se::Value item;
+    for (uint32_t i = 0; i < length; ++i) {
+        if (!obj->getArrayElement(i, &item) || !item.isNumber()) {
+            to->clear();
+            return false;
+        }
+        to->add(static_cast<T>(item.toDouble()));
+    }
+    return true;
+}
+
+template <typename T, typename = std::enable_if_t<!std::is_arithmetic_v<T>>, typename = void>
+inline bool sevalue_to_native(const se::Value &from, ::spine4::Vector<T> *to, se::Object *ctx) { // NOLINT(readability-identifier-naming)
+    CC_ASSERT_NOT_NULL(to);
+    if (!from.isObject() || !from.toObject()->isArray()) {
+        return false;
+    }
+    auto *obj = from.toObject();
+    uint32_t length = 0;
+    if (!obj->getArrayLength(&length)) {
+        to->clear();
+        return false;
+    }
+
+    se::Value item;
+    for (uint32_t i = 0; i < length; ++i) {
+        if (!obj->getArrayElement(i, &item)) {
+            to->clear();
+            return false;
+        }
+        T native{};
+        if (!sevalue_to_native(item, &native, ctx)) {
+            to->clear();
+            return false;
+        }
+        to->add(native);
+    }
+    return true;
+}
 %}
 
 // ----- Ignore Section ------

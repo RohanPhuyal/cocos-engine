@@ -43,11 +43,13 @@
 #endif
 #include "spine4/spine.h"
 
-namespace cc::spine4 {
+namespace cc {
 class RenderEntity;
 class RenderDrawInfo;
 class Material;
+}
 
+namespace cc::spine4 {
 class AttachmentVertices;
 
 
@@ -61,7 +63,7 @@ void loopUVCoords(VertexType *tmp, const UVArrayType &uvs, int count) {
 
 struct SlotCacheInfo {
     bool isOwner{false};
-    spine4::Attachment *attachment{nullptr};
+    ::spine4::Attachment *attachment{nullptr};
     AttachmentVertices *attachmentVertices{nullptr};
 };
 
@@ -70,15 +72,15 @@ struct SlotCacheInfo {
 class SkeletonRenderer : public cc::RefCounted, public cc::middleware::IMiddleware {
 public:
     static SkeletonRenderer *create();
-    static SkeletonRenderer *createWithSkeleton(spine4::Skeleton *skeleton, bool ownsSkeleton = false, bool ownsSkeletonData = false);
-    static SkeletonRenderer *createWithData(spine4::SkeletonData *skeletonData, bool ownsSkeletonData = false);
+    static SkeletonRenderer *createWithSkeleton(::spine4::Skeleton *skeleton, bool ownsSkeleton = false, bool ownsSkeletonData = false);
+    static SkeletonRenderer *createWithData(::spine4::SkeletonData *skeletonData, bool ownsSkeletonData = false);
     static SkeletonRenderer *createWithFile(const std::string &skeletonDataFile, const std::string &atlasFile, float scale = 1);
 
     void update(float deltaTime) override {}
     void render(float deltaTime) override;
     virtual cc::Rect getBoundingBox() const;
 
-    spine4::Skeleton *getSkeleton() const;
+    ::spine4::Skeleton *getSkeleton() const;
 
     void setTimeScale(float scale);
     float getTimeScale() const;
@@ -91,9 +93,9 @@ public:
     void paused(bool value);
 
     /* Returns 0 if the bone was not found. */
-    spine4::Bone *findBone(const std::string &boneName) const;
+    ::spine4::Bone *findBone(const std::string &boneName) const;
     /* Returns 0 if the slot was not found. */
-    spine4::Slot *findSlot(const std::string &slotName) const;
+    ::spine4::Slot *findSlot(const std::string &slotName) const;
 
     /* Sets the skin used to look up attachments not found in the SkeletonData defaultSkin. Attachments from the new skin are
          * attached if the corresponding attachment from the old skin was attached.
@@ -103,7 +105,7 @@ public:
     void setSkin(const char *skinName);
 
     /* Returns 0 if the slot or attachment was not found. */
-    spine4::Attachment *getAttachment(const std::string &slotName, const std::string &attachmentName) const;
+    ::spine4::Attachment *getAttachment(const std::string &slotName, const std::string &attachmentName) const;
     /* Returns false if the slot or attachment was not found.
          * @param attachmentName May be empty string ("") for no attachment. */
     bool setAttachment(const std::string &slotName, const std::string &attachmentName);
@@ -146,18 +148,18 @@ public:
     void onDisable();
 
     SkeletonRenderer();
-    explicit SkeletonRenderer(spine4::Skeleton *skeleton, bool ownsSkeleton = false, bool ownsSkeletonData = false, bool ownsAtlas = false);
-    explicit SkeletonRenderer(spine4::SkeletonData *skeletonData, bool ownsSkeletonData = false);
+    explicit SkeletonRenderer(::spine4::Skeleton *skeleton, bool ownsSkeleton = false, bool ownsSkeletonData = false, bool ownsAtlas = false);
+    explicit SkeletonRenderer(::spine4::SkeletonData *skeletonData, bool ownsSkeletonData = false);
     SkeletonRenderer(const std::string &skeletonDataFile, const std::string &atlasFile, float scale = 1);
 
     ~SkeletonRenderer() override;
 
     void initWithUUID(const std::string &uuid);
-    void initWithSkeleton(spine4::Skeleton *skeleton, bool ownsSkeleton = false, bool ownsSkeletonData = false, bool ownsAtlas = false);
-    void initWithData(spine4::SkeletonData *skeletonData, bool ownsSkeletonData = false);
-    void initWithJsonFile(const std::string &skeletonDataFile, spine4::Atlas *atlas, float scale = 1);
+    void initWithSkeleton(::spine4::Skeleton *skeleton, bool ownsSkeleton = false, bool ownsSkeletonData = false, bool ownsAtlas = false);
+    void initWithData(::spine4::SkeletonData *skeletonData, bool ownsSkeletonData = false);
+    void initWithJsonFile(const std::string &skeletonDataFile, ::spine4::Atlas *atlas, float scale = 1);
     void initWithJsonFile(const std::string &skeletonDataFile, const std::string &atlasFile, float scale = 1);
-    void initWithBinaryFile(const std::string &skeletonDataFile, spine4::Atlas *atlas, float scale = 1);
+    void initWithBinaryFile(const std::string &skeletonDataFile, ::spine4::Atlas *atlas, float scale = 1);
     void initWithBinaryFile(const std::string &skeletonDataFile, const std::string &atlasFile, float scale = 1);
 
     virtual void initialize();
@@ -169,15 +171,15 @@ public:
     void setSlotTexture(const std::string &slotName, cc::Texture2D *tex2d, bool createAttachment);
 
 protected:
-    void setSkeletonData(spine4::SkeletonData *skeletonData, bool ownsSkeletonData);
+    void setSkeletonData(::spine4::SkeletonData *skeletonData, bool ownsSkeletonData);
     void releaseSlotCacheInfo(SlotCacheInfo &info);
 
     bool _ownsSkeletonData = false;
     bool _ownsSkeleton = false;
     bool _ownsAtlas = false;
-    spine4::Atlas *_atlas = nullptr;
-    spine4::AttachmentLoader *_attachmentLoader = nullptr;
-    spine4::Skeleton *_skeleton = nullptr;
+    ::spine4::Atlas *_atlas = nullptr;
+    ::spine4::AttachmentLoader *_attachmentLoader = nullptr;
+    ::spine4::Skeleton *_skeleton = nullptr;
 #if 0
     VertexEffectDelegate *_effectDelegate = nullptr;
 #endif
@@ -190,7 +192,7 @@ protected:
     bool _debugBones = false;
     cc::middleware::Color4F _nodeColor = cc::middleware::Color4F::WHITE;
     bool _premultipliedAlpha = false;
-    spine4::SkeletonClipping *_clipper = nullptr;
+    ::spine4::SkeletonClipping *_clipper = nullptr;
     bool _useTint = false;
     bool _enableBatch = false;
     std::string _uuid;
@@ -209,7 +211,7 @@ protected:
      * The slot's attachment may be modified when calling AnimationState::apply(), which can cause custom attachments to malfunction. 
      * To prevent this, we need to cache the original attachment.
      */
-    ccstd::unordered_map<spine4::Slot *, SlotCacheInfo> _slotTextureSet;
+    ccstd::unordered_map<::spine4::Slot *, SlotCacheInfo> _slotTextureSet;
     bool _needClearMaterialCaches = false;
 };
 }; // namespace cc

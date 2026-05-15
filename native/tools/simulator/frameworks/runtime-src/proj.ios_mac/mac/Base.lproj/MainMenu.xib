@@ -5,7 +5,7 @@
         <plugIn identifier="com.apple.InterfaceBuilder.CocoaPlugin" version="17701"/>
     </dependencies>
     <objects>
-        <customObject id="-2" userLabel="File's Owner" customClass="AppDelegate">
+        <customObject id="-2" userLabel="File's Owner" customClass="AppController">
             <connections>
                 <outlet property="delegate" destination="536" id="537"/>
                 <outlet property="menu" destination="29" id="650"/>
@@ -193,7 +193,7 @@
             <point key="canvasLocation" x="140" y="154"/>
         </menu>
         <customObject id="420" customClass="NSFontManager"/>
-        <customObject id="536" customClass="AppDelegate">
+        <customObject id="536" customClass="AppController">
             <connections>
                 <outlet property="menu" destination="29" id="550"/>
             </connections>

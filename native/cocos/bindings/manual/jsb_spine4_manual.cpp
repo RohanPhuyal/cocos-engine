@@ -27,6 +27,7 @@
 #include "base/memory/Memory.h"
 
 #include "bindings/jswrapper/SeApi.h"
+#define CC_SKIP_SPINE_JSB_CONVERSIONS 1
 #include "bindings/manual/jsb_conversions.h"
 #include "bindings/manual/jsb_global.h"
 #include "bindings/manual/jsb_helper.h"
@@ -42,9 +43,22 @@
 
 using namespace cc::spine4;
 
+inline bool sevalue_to_native(const se::Value &from, ::spine4::Vector2 *to, se::Object *ctx) { // NOLINT(readability-identifier-naming)
+    cc::Vec2 tmp{};
+    if (!sevalue_to_native(from, &tmp, ctx)) {
+        return false;
+    }
+    to->set(tmp.x, tmp.y);
+    return true;
+}
+
+inline bool nativevalue_to_se(const ::spine4::Vector2 &from, se::Value &to, se::Object *ctx) { // NOLINT(readability-identifier-naming)
+    return nativevalue_to_se(cc::Vec2{from.x, from.y}, to, ctx);
+}
+
 static cc::spine4::Cocos2dTextureLoader textureLoader;
-static cc::RefMap<ccstd::string, middleware::Texture2D *> *_preloadedAtlasTextures = nullptr;
-static middleware::Texture2D *_getPreloadedAtlasTexture(const char *path) {
+static cc::RefMap<ccstd::string, cc::middleware::Texture2D *> *_preloadedAtlasTextures = nullptr;
+static cc::middleware::Texture2D *_getPreloadedAtlasTexture(const char *path) {
     CC_ASSERT(_preloadedAtlasTextures);
     auto it = _preloadedAtlasTextures->find(path);
     return it != _preloadedAtlasTextures->end() ? it->second : nullptr;
@@ -79,7 +93,7 @@ static bool js_register_spine4_initSkeletonData(se::State &s) {
     ok = sevalue_to_native(args[2], &atlasText);
     SE_PRECONDITION2(ok, false, "Invalid atlas content!");
 
-    cc::RefMap<ccstd::string, middleware::Texture2D *> textures;
+    cc::RefMap<ccstd::string, cc::middleware::Texture2D *> textures;
     ok = seval_to_Map_string_key(args[3], &textures);
     SE_PRECONDITION2(ok, false, "Invalid textures!");
 
@@ -142,6 +156,7 @@ static bool js_register_spine4_initSkeletonData(se::State &s) {
             delete attachmentLoader;
             attachmentLoader = nullptr;
         }
+        SE_REPORT_ERROR("[spine4] initSkeletonData failed. uuid=%s source=%s textures=%d", uuid.c_str(), skeletonDataFile.c_str(), static_cast<int>(textures.size()));
     }
     return true;
 }
@@ -218,7 +233,7 @@ static bool js_register_spine4_retainSkeletonData(se::State &s) {
 }
 SE_BIND_FUNC(js_register_spine4_retainSkeletonData)
 
-static bool js_VertexAttachment_computeWorldVertices(se::State &s) {
+static bool js_VertexAttachment_computeWorldVertices_spine4(se::State &s) {
     const auto &args = s.args();
 
     spine4::VertexAttachment *vertexAttachment = SE_THIS_OBJECT<spine4::VertexAttachment>(s);
@@ -266,9 +281,9 @@ static bool js_VertexAttachment_computeWorldVertices(se::State &s) {
     }
     return true;
 }
-SE_BIND_FUNC(js_VertexAttachment_computeWorldVertices)
+SE_BIND_FUNC(js_VertexAttachment_computeWorldVertices_spine4)
 
-static bool js_RegionAttachment_computeWorldVertices(se::State &s) {
+static bool js_RegionAttachment_computeWorldVertices_spine4(se::State &s) {
     const auto &args = s.args();
 
     spine4::RegionAttachment *regionAttachment = SE_THIS_OBJECT<spine4::RegionAttachment>(s);
@@ -336,9 +351,9 @@ static bool js_RegionAttachment_computeWorldVertices(se::State &s) {
     }
     return true;
 }
-SE_BIND_FUNC(js_RegionAttachment_computeWorldVertices)
+SE_BIND_FUNC(js_RegionAttachment_computeWorldVertices_spine4)
 
-static bool js_Skeleton_getBounds(se::State &s) {
+static bool js_Skeleton_getBounds_spine4(se::State &s) {
     const auto &args = s.args();
     spine4::Skeleton* skeleton = SE_THIS_OBJECT<spine4::Skeleton>(s);
     if (nullptr == skeleton) return true;
@@ -365,9 +380,9 @@ static bool js_Skeleton_getBounds(se::State &s) {
     }
     return true;
 }
-SE_BIND_FUNC(js_Skeleton_getBounds)
+SE_BIND_FUNC(js_Skeleton_getBounds_spine4)
 
-static bool js_Bone_worldToLocal(se::State &s) {
+static bool js_Bone_worldToLocal_spine4(se::State &s) {
     const auto &args = s.args();
     spine4::Bone* bone = SE_THIS_OBJECT<spine4::Bone>(s);
     if (nullptr == bone) return true;
@@ -387,9 +402,9 @@ static bool js_Bone_worldToLocal(se::State &s) {
     s.rval().setObject(ret.toObject());
     return true;
 }
-SE_BIND_FUNC(js_Bone_worldToLocal)
+SE_BIND_FUNC(js_Bone_worldToLocal_spine4)
 
-static bool js_Bone_localToWorld(se::State &s) {
+static bool js_Bone_localToWorld_spine4(se::State &s) {
     const auto &args = s.args();
     spine4::Bone* bone = SE_THIS_OBJECT<spine4::Bone>(s);
     if (nullptr == bone) return true;
@@ -409,9 +424,9 @@ static bool js_Bone_localToWorld(se::State &s) {
     s.rval().setObject(ret.toObject());
     return true;
 }
-SE_BIND_FUNC(js_Bone_localToWorld)
+SE_BIND_FUNC(js_Bone_localToWorld_spine4)
 
-static bool js_PointAttachment_computeWorldPosition(se::State &s) {
+static bool js_PointAttachment_computeWorldPosition_spine4(se::State &s) {
     const auto &args = s.args();
     spine4::PointAttachment* pointAttachment = SE_THIS_OBJECT<spine4::PointAttachment>(s);
     if (nullptr == pointAttachment) return true;
@@ -431,9 +446,9 @@ static bool js_PointAttachment_computeWorldPosition(se::State &s) {
     s.rval().setObject(ret.toObject());
     return true;
 }
-SE_BIND_FUNC(js_PointAttachment_computeWorldPosition)
+SE_BIND_FUNC(js_PointAttachment_computeWorldPosition_spine4)
 
-static bool js_Skin_findAttachmentsForSlot(se::State &s) {
+static bool js_Skin_findAttachmentsForSlot_spine4(se::State &s) {
     const auto &args = s.args();
     spine4::Skin* skin = SE_THIS_OBJECT<spine4::Skin>(s);
     if (nullptr == skin) return true;
@@ -462,7 +477,7 @@ static bool js_Skin_findAttachmentsForSlot(se::State &s) {
     }
     return true;
 }
-SE_BIND_FUNC(js_Skin_findAttachmentsForSlot)
+SE_BIND_FUNC(js_Skin_findAttachmentsForSlot_spine4)
 
 #if 0
 static bool js_VertexEffect_transform(se::State &s) {
@@ -508,7 +523,7 @@ static bool js_JitterVertexEffect_transform(se::State &s) {
 SE_BIND_FUNC(js_JitterVertexEffect_transform)
 #endif
 
-static bool js_spine_Skin_getAttachments(se::State& s) {
+static bool js_spine_Skin_getAttachments_spine4(se::State& s) {
     CC_UNUSED bool ok = true;
     const auto& args = s.args();
     size_t argc = args.size();
@@ -539,9 +554,9 @@ static bool js_spine_Skin_getAttachments(se::State& s) {
     
     return true;
 }
-SE_BIND_FUNC(js_spine_Skin_getAttachments)
+SE_BIND_FUNC(js_spine_Skin_getAttachments_spine4)
 
-static bool js_spine_Slot_setAttachment(se::State& s) {
+static bool js_spine_Slot_setAttachment_spine4(se::State& s) {
     CC_UNUSED bool ok = true;
     const auto& args = s.args();
     spine4::Slot *slot = (spine4::Slot *) NULL ;
@@ -558,9 +573,9 @@ static bool js_spine_Slot_setAttachment(se::State& s) {
 
     return true;
 }
-SE_BIND_FUNC(js_spine_Slot_setAttachment)
+SE_BIND_FUNC(js_spine_Slot_setAttachment_spine4)
 
-static bool js_spine_Slot_getAttachment(se::State& s) {
+static bool js_spine_Slot_getAttachment_spine4(se::State& s) {
     CC_UNUSED bool ok = true;
     const auto& args = s.args();
     spine4::Slot *slot = (spine4::Slot *) NULL ;
@@ -575,9 +590,9 @@ static bool js_spine_Slot_getAttachment(se::State& s) {
     }
     return false;
 }
-SE_BIND_FUNC(js_spine_Slot_getAttachment)
+SE_BIND_FUNC(js_spine_Slot_getAttachment_spine4)
 
-static bool js_spine_Skeleton_setSkin(se::State& s)
+static bool js_spine_Skeleton_setSkin_spine4(se::State& s)
 {
     CC_UNUSED bool ok = true;
     const auto& args = s.args();
@@ -599,7 +614,7 @@ static bool js_spine_Skeleton_setSkin(se::State& s)
     
     return true;
 }
-SE_BIND_FUNC(js_spine_Skeleton_setSkin) 
+SE_BIND_FUNC(js_spine_Skeleton_setSkin_spine4) 
 
 bool register_all_spine4_manual(se::Object *obj) {
     // Get the ns
@@ -616,22 +631,22 @@ bool register_all_spine4_manual(se::Object *obj) {
     ns->defineFunction("retainSkeletonData", _SE(js_register_spine4_retainSkeletonData));
     ns->defineFunction("disposeSkeletonData", _SE(js_register_spine4_disposeSkeletonData));
 
-    __jsb_spine4_VertexAttachment_proto->defineFunction("computeWorldVertices", _SE(js_VertexAttachment_computeWorldVertices));
-    __jsb_spine4_RegionAttachment_proto->defineFunction("computeWorldVertices", _SE(js_RegionAttachment_computeWorldVertices));
-    __jsb_spine4_Skeleton_proto->defineFunction("getBounds", _SE(js_Skeleton_getBounds));
-    __jsb_spine4_Skeleton_proto->defineFunction("setSkin", _SE(js_spine_Skeleton_setSkin)); 
-    __jsb_spine4_Skin_proto->defineFunction("getAttachmentsForSlot", _SE(js_Skin_findAttachmentsForSlot));
-    __jsb_spine4_Bone_proto->defineFunction("worldToLocal", _SE(js_Bone_worldToLocal));
-    __jsb_spine4_Bone_proto->defineFunction("localToWorld", _SE(js_Bone_localToWorld));
-    __jsb_spine4_PointAttachment_proto->defineFunction("computeWorldPosition", _SE(js_PointAttachment_computeWorldPosition));
+    __jsb_spine4_VertexAttachment_proto->defineFunction("computeWorldVertices", _SE(js_VertexAttachment_computeWorldVertices_spine4));
+    __jsb_spine4_RegionAttachment_proto->defineFunction("computeWorldVertices", _SE(js_RegionAttachment_computeWorldVertices_spine4));
+    __jsb_spine4_Skeleton_proto->defineFunction("getBounds", _SE(js_Skeleton_getBounds_spine4));
+    __jsb_spine4_Skeleton_proto->defineFunction("setSkin", _SE(js_spine_Skeleton_setSkin_spine4)); 
+    __jsb_spine4_Skin_proto->defineFunction("getAttachmentsForSlot", _SE(js_Skin_findAttachmentsForSlot_spine4));
+    __jsb_spine4_Bone_proto->defineFunction("worldToLocal", _SE(js_Bone_worldToLocal_spine4));
+    __jsb_spine4_Bone_proto->defineFunction("localToWorld", _SE(js_Bone_localToWorld_spine4));
+    __jsb_spine4_PointAttachment_proto->defineFunction("computeWorldPosition", _SE(js_PointAttachment_computeWorldPosition_spine4));
 #if 0
     __jsb_spine4_VertexEffect_proto->defineFunction("transform", _SE(js_VertexEffect_transform));
     __jsb_spine4_SwirlVertexEffect_proto->defineFunction("transform", _SE(js_SwirlVertexEffect_transform));
     __jsb_spine4_JitterVertexEffect_proto->defineFunction("transform", _SE(js_JitterVertexEffect_transform));
 #endif
-    __jsb_spine4_Skin_proto->defineFunction("getAttachments", _SE(js_spine_Skin_getAttachments));
-    __jsb_spine4_Slot_proto->defineFunction("setAttachment", _SE(js_spine_Slot_setAttachment));
-    __jsb_spine4_Slot_proto->defineFunction("getAttachment", _SE(js_spine_Slot_getAttachment));
+    __jsb_spine4_Skin_proto->defineFunction("getAttachments", _SE(js_spine_Skin_getAttachments_spine4));
+    __jsb_spine4_Slot_proto->defineFunction("setAttachment", _SE(js_spine_Slot_setAttachment_spine4));
+    __jsb_spine4_Slot_proto->defineFunction("getAttachment", _SE(js_spine_Slot_getAttachment_spine4));
 
     cc::spine4::setSpineObjectDisposeCallback([](void *spineObj) {
         if (!se::NativePtrToObjectMap::isValid()) {

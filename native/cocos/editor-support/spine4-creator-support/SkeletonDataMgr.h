@@ -39,7 +39,7 @@
 #include "spine4/SkeletonData.h"
 #include "spine4/spine.h"
 
-using namespace spine4;
+using namespace ::spine4;
 namespace cc::spine4 {
 
 class AttachmentVertices;

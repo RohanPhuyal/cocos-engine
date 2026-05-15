@@ -24,6 +24,7 @@
 
 import { EDITOR_NOT_IN_PREVIEW } from 'internal:constants';
 import { CCString, Enum, error, murmurhash2_32_gc } from '../core';
+import { log } from '../core/platform/debug';
 import SkeletonCache from './skeleton-cache';
 import { Skeleton } from './skeleton';
 import spine from './lib/spine-core';
@@ -443,7 +444,10 @@ export class SkeletonData extends Asset {
      *              @zh 值为 false 时，当发生错误时将打印出反馈信息。
      */
     public getRuntimeData (quiet?: boolean): spine.SkeletonData | null {
+        const spineVersion = detectSpineVersion(this._skeletonJson, this._nativeAsset);
+        log(`[spine4][trace] getRuntimeData asset="${this.name}" version="${spineVersion ?? 'unknown'}" hasJson=${!!this._skeletonJson} hasBinary=${!!this._nativeAsset} textures=${this.textures.length} textureNames=${this.textureNames.length}`);
         if (this._skeletonCache) {
+            log(`[spine4][trace] cache-hit asset="${this.name}"`);
             return this._skeletonCache;
         }
 
@@ -454,18 +458,16 @@ export class SkeletonData extends Asset {
             return null;
         }
 
-        const spineVersion = detectSpineVersion(this._skeletonJson, this._nativeAsset);
         const wasmUtil = getSpineWasmUtilByVersion(spineVersion);
         if (!wasmUtil) {
-            if (!quiet) {
-                error(`${this.name} spine runtime wasm util is not ready!`);
-            }
+            error(`[spine4][trace] ${this.name} spine runtime wasm util is not ready! version="${spineVersion ?? 'unknown'}"`);
             return null;
         }
         const uuid = this.mergedUUID();
         const spData = wasmUtil.querySpineSkeletonDataByUUID(uuid);
         if (spData) {
             this._skeletonCache = spData;
+            log(`[spine4][trace] wasm cache-hit uuid="${uuid}" asset="${this.name}"`);
         } else {
             const size = this.textures.length;
             const textureUUIDs: string[] = [];
@@ -474,9 +476,13 @@ export class SkeletonData extends Asset {
                 textureUUIDs.push(tex.uuid || tex.getId());
             }
             if (this._skeletonJson) {
+                log(`[spine4][trace] createWithJson uuid="${uuid}" asset="${this.name}" textures=${textureUUIDs.length}`);
                 this._skeletonCache = wasmUtil.createSpineSkeletonDataWithJson(this.skeletonJsonStr, this._atlasText, this.textureNames, textureUUIDs);
                 if (this._skeletonCache) {
                     wasmUtil.registerSpineSkeletonDataWithUUID(this._skeletonCache, uuid);
+                    log(`[spine4][trace] createWithJson success uuid="${uuid}" asset="${this.name}"`);
+                } else {
+                    error(`[spine4][trace] createWithJson failed uuid="${uuid}" asset="${this.name}"`);
                 }
             } else {
                 const rawData = new Uint8Array(this._nativeAsset);
@@ -484,13 +490,18 @@ export class SkeletonData extends Asset {
                 const ptr = wasmUtil.createStoreMemory(byteSize);
                 const wasmMem = wasmUtil.wasm.HEAPU8.subarray(ptr, ptr + byteSize);
                 wasmMem.set(rawData);
+                log(`[spine4][trace] createWithBinary uuid="${uuid}" asset="${this.name}" bytes=${byteSize} textures=${textureUUIDs.length}`);
                 this._skeletonCache = wasmUtil.createSpineSkeletonDataWithBinary(byteSize, this._atlasText, this.textureNames, textureUUIDs);
                 if (this._skeletonCache) {
                     wasmUtil.registerSpineSkeletonDataWithUUID(this._skeletonCache, uuid);
+                    log(`[spine4][trace] createWithBinary success uuid="${uuid}" asset="${this.name}"`);
+                } else {
+                    error(`[spine4][trace] createWithBinary failed uuid="${uuid}" asset="${this.name}" bytes=${byteSize}`);
                 }
                 wasmUtil.freeStoreMemory();
             }
         }
+        log(`[spine4][trace] getRuntimeData done asset="${this.name}" ready=${!!this._skeletonCache}`);
         return this._skeletonCache;
     }
 

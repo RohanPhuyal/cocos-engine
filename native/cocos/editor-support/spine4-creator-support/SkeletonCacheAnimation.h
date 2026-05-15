@@ -35,7 +35,7 @@
 #include "middleware-adapter.h"
 #include "spine4/spine.h"
 
-namespace cc::spine4 {
+namespace cc {
 class RenderEntity;
 class RenderDrawInfo;
 class Material;
@@ -51,20 +51,20 @@ public:
     void update(float dt) override;
     void render(float dt) override;
 
-    spine4::Skeleton *getSkeleton() const;
+    ::spine4::Skeleton *getSkeleton() const;
 
     void setTimeScale(float scale);
     float getTimeScale() const;
 
     void paused(bool value);
 
-    spine4::Bone *findBone(const std::string &boneName) const;
-    spine4::Slot *findSlot(const std::string &slotName) const;
+    ::spine4::Bone *findBone(const std::string &boneName) const;
+    ::spine4::Slot *findSlot(const std::string &slotName) const;
 
     void setSkin(const std::string &skinName);
     void setSkin(const char *skinName);
 
-    spine4::Attachment *getAttachment(const std::string &slotName, const std::string &attachmentName) const;
+    ::spine4::Attachment *getAttachment(const std::string &slotName, const std::string &attachmentName) const;
     bool setAttachment(const std::string &slotName, const std::string &attachmentName);
     bool setAttachment(const std::string &slotName, const char *attachmentName);
     void setColor(float r, float g, float b, float a);
@@ -82,7 +82,7 @@ public:
 
     void setAnimation(const std::string &name, bool loop);
     void addAnimation(const std::string &name, bool loop, float delay = 0);
-    spine4::Animation *findAnimation(const std::string &name) const;
+    ::spine4::Animation *findAnimation(const std::string &name) const;
 
     using CacheFrameEvent = std::function<void(std::string)>;
     void setStartListener(const CacheFrameEvent &listener);

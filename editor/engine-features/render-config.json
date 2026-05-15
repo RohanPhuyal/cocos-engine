@@ -396,11 +396,11 @@
             "options": {
                 "spine-3.8": {
                     "enginePlugin": true,
-                    "cmakeConfig": "USE_SPINE_3_8",
+                    "cmakeConfig": "USE_SPINE_DUAL_RUNTIME",
                     "default": true,
                     "isNativeModule": true,
-                    "label": "i18n:ENGINE.features.spine_38.label",
-                    "description": "i18n:ENGINE.features.spine_38.description",
+                    "label": "Both (Spine 3.8 + 4.2)",
+                    "description": "Compile and enable both Spine 3.8 and 4.2 runtimes in one engine binary.",
                     "flags": {
                         "LOAD_SPINE_MANUALLY": {
                             "label": "i18n:ENGINE.features.flags.spine.loadManual.label",
@@ -412,11 +412,12 @@
                 },
                 "spine-4.2": {
                     "enginePlugin": true,
-                    "cmakeConfig": "USE_SPINE_4_2",
+                    "cmakeConfig": "USE_SPINE_DUAL_RUNTIME",
                     "default": false,
+                    "hidden": true,
                     "isNativeModule": true,
-                    "label": "i18n:ENGINE.features.spine_42.label",
-                    "description": "i18n:ENGINE.features.spine_42.description",
+                    "label": "Both (Spine 3.8 + 4.2)",
+                    "description": "Compile and enable both Spine 3.8 and 4.2 runtimes in one engine binary.",
                     "flags": {
                         "LOAD_SPINE_MANUALLY": {
                             "label": "i18n:ENGINE.features.flags.spine.loadManual.label",

@@ -27,8 +27,8 @@
  * SPINE RUNTIMES, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *****************************************************************************/
 
-#ifndef SPINE_SPINE_H_
-#define SPINE_SPINE_H_
+#ifndef SPINE4_SPINE_H_
+#define SPINE4_SPINE_H_
 
 #include <spine4/Animation.h>
 #include <spine4/AnimationState.h>
@@ -112,4 +112,4 @@
 #include <spine4/VertexAttachment.h>
 #include <spine4/Vertices.h>
 
-#endif
+#endif // SPINE4_SPINE_H_

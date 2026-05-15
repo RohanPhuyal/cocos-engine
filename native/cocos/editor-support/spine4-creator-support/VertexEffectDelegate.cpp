@@ -39,10 +39,6 @@ VertexEffectDelegate::~VertexEffectDelegate() {
 }
 
 void VertexEffectDelegate::clear() {
-    if (_interpolation) {
-        delete _interpolation;
-        _interpolation = nullptr;
-    }
     if (_vertexEffect) {
         delete _vertexEffect;
         _vertexEffect = nullptr;
@@ -50,36 +46,36 @@ void VertexEffectDelegate::clear() {
     _effectType = "none";
 }
 
-JitterVertexEffect *VertexEffectDelegate::initJitter(float jitterX, float jitterY) {
+::spine4::JitterVertexEffect *VertexEffectDelegate::initJitter(float jitterX, float jitterY) {
     clear();
-    _vertexEffect = new spine4::JitterVertexEffect(jitterX, jitterY);
+    _vertexEffect = new ::spine4::JitterVertexEffect(jitterX, jitterY);
     _effectType = "jitter";
-    return (JitterVertexEffect *)_vertexEffect;
+    return static_cast<::spine4::JitterVertexEffect *>(_vertexEffect);
 }
 
-SwirlVertexEffect *VertexEffectDelegate::initSwirlWithPow(float radius, int power) {
+::spine4::SwirlVertexEffect *VertexEffectDelegate::initSwirlWithPow(float radius, int power) {
     clear();
-    _interpolation = new spine4::PowInterpolation(power);
-    _vertexEffect = new spine4::SwirlVertexEffect(radius, *_interpolation);
+    (void)power;
+    _vertexEffect = new ::spine4::SwirlVertexEffect(radius);
     _effectType = "swirl";
-    return (SwirlVertexEffect *)_vertexEffect;
+    return static_cast<::spine4::SwirlVertexEffect *>(_vertexEffect);
 }
 
-SwirlVertexEffect *VertexEffectDelegate::initSwirlWithPowOut(float radius, int power) {
+::spine4::SwirlVertexEffect *VertexEffectDelegate::initSwirlWithPowOut(float radius, int power) {
     clear();
-    _interpolation = new spine4::PowOutInterpolation(power);
-    _vertexEffect = new spine4::SwirlVertexEffect(radius, *_interpolation);
+    (void)power;
+    _vertexEffect = new ::spine4::SwirlVertexEffect(radius);
     _effectType = "swirl";
-    return (SwirlVertexEffect *)_vertexEffect;
+    return static_cast<::spine4::SwirlVertexEffect *>(_vertexEffect);
 }
 
-JitterVertexEffect *VertexEffectDelegate::getJitterVertexEffect() {
-    JitterVertexEffect *jitter = dynamic_cast<JitterVertexEffect *>(_vertexEffect);
+::spine4::JitterVertexEffect *VertexEffectDelegate::getJitterVertexEffect() {
+    auto *jitter = dynamic_cast<::spine4::JitterVertexEffect *>(_vertexEffect);
     return jitter;
 }
 
-SwirlVertexEffect *VertexEffectDelegate::getSwirlVertexEffect() {
-    SwirlVertexEffect *swirl = dynamic_cast<SwirlVertexEffect *>(_vertexEffect);
+::spine4::SwirlVertexEffect *VertexEffectDelegate::getSwirlVertexEffect() {
+    auto *swirl = dynamic_cast<::spine4::SwirlVertexEffect *>(_vertexEffect);
     return swirl;
 }
 } // namespace cc::spine4

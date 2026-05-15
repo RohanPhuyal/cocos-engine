@@ -32,7 +32,7 @@ cc_set_if_undefined(USE_SPINE_3_8            ON)
 cc_set_if_undefined(USE_SPINE_4_2            OFF)
 cc_set_if_undefined(USE_SPINE4               OFF)
 # Phase-1 dual-runtime toggle. When ON, both runtimes are built together.
-cc_set_if_undefined(USE_SPINE_DUAL_RUNTIME   OFF)
+cc_set_if_undefined(USE_SPINE_DUAL_RUNTIME   ON)
 if(USE_SPINE)
     if(USE_SPINE_DUAL_RUNTIME)
         set(USE_SPINE_3_8 ON)

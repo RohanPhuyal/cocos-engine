@@ -43,7 +43,7 @@ USING_NS_MW; // NOLINT(google-build-using-namespace)
 
 using namespace cc;      // NOLINT(google-build-using-namespace)
 using namespace cc::gfx; // NOLINT(google-build-using-namespace)
-using namespace spine4;
+using namespace ::spine4;
 static const std::string TECH_STAGE = "opaque";
 static const std::string TEXTURE_KEY = "texture";
 
@@ -382,7 +382,7 @@ void SkeletonCacheAnimation::render(float /*dt*/) {
     }
 }
 
-Skeleton *SkeletonCacheAnimation::getSkeleton() const {
+::spine4::Skeleton *SkeletonCacheAnimation::getSkeleton() const {
     return _skeletonCache->getSkeleton();
 }
 
@@ -398,11 +398,11 @@ void SkeletonCacheAnimation::paused(bool value) {
     _paused = value;
 }
 
-Bone *SkeletonCacheAnimation::findBone(const std::string &boneName) const {
+::spine4::Bone *SkeletonCacheAnimation::findBone(const std::string &boneName) const {
     return _skeletonCache->findBone(boneName);
 }
 
-Slot *SkeletonCacheAnimation::findSlot(const std::string &slotName) const {
+::spine4::Slot *SkeletonCacheAnimation::findSlot(const std::string &slotName) const {
     return _skeletonCache->findSlot(slotName);
 }
 
@@ -416,7 +416,7 @@ void SkeletonCacheAnimation::setSkin(const char *skinName) {
     _skeletonCache->resetAllAnimationData();
 }
 
-Attachment *SkeletonCacheAnimation::getAttachment(const std::string &slotName, const std::string &attachmentName) const {
+::spine4::Attachment *SkeletonCacheAnimation::getAttachment(const std::string &slotName, const std::string &attachmentName) const {
     return _skeletonCache->getAttachment(slotName, attachmentName);
 }
 
@@ -505,7 +505,7 @@ void SkeletonCacheAnimation::addAnimation(const std::string &name, bool loop, fl
     _animationQueue.push(aniInfo);
 }
 
-Animation *SkeletonCacheAnimation::findAnimation(const std::string &name) const {
+::spine4::Animation *SkeletonCacheAnimation::findAnimation(const std::string &name) const {
     return _skeletonCache->findAnimation(name);
 }
 

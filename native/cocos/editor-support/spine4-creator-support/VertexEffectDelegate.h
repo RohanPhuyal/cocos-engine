@@ -32,29 +32,48 @@
 #include <string>
 #include "base/RefCounted.h"
 #include "spine4/spine.h"
-using namespace spine4;
+
+namespace spine4 {
+class VertexEffect {
+public:
+    virtual ~VertexEffect() = default;
+    virtual void begin(Skeleton &) {}
+    virtual void transform(float &, float &, float &, float &, Color &, Color &) {}
+    virtual void end() {}
+};
+
+class JitterVertexEffect : public VertexEffect {
+public:
+    JitterVertexEffect(float /*jitterX*/, float /*jitterY*/) {}
+};
+
+class SwirlVertexEffect : public VertexEffect {
+public:
+    SwirlVertexEffect(float /*radius*/) {}
+};
+} // namespace spine4
+
 namespace cc::spine4 {
 
 class VertexEffectDelegate : public cc::RefCounted {
 public:
     VertexEffectDelegate();
     ~VertexEffectDelegate() override;
-    JitterVertexEffect *initJitter(float jitterX, float jitterY);
-    SwirlVertexEffect *initSwirlWithPow(float radius, int power);
-    SwirlVertexEffect *initSwirlWithPowOut(float radius, int power);
-    VertexEffect *getVertexEffect() {
+    ::spine4::JitterVertexEffect *initJitter(float jitterX, float jitterY);
+    ::spine4::SwirlVertexEffect *initSwirlWithPow(float radius, int power);
+    ::spine4::SwirlVertexEffect *initSwirlWithPowOut(float radius, int power);
+    ::spine4::VertexEffect *getVertexEffect() {
         return _vertexEffect;
     }
-    JitterVertexEffect *getJitterVertexEffect();
-    SwirlVertexEffect *getSwirlVertexEffect();
+    ::spine4::JitterVertexEffect *getJitterVertexEffect();
+    ::spine4::SwirlVertexEffect *getSwirlVertexEffect();
     const std::string &getEffectType() const {
         return _effectType;
     }
     void clear();
 
 private:
-    VertexEffect *_vertexEffect = nullptr;
-    Interpolation *_interpolation = nullptr;
+    ::spine4::VertexEffect *_vertexEffect = nullptr;
     std::string _effectType = "none";
 };
 } // namespace cc::spine4

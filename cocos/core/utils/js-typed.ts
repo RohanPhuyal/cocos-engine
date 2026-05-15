@@ -548,6 +548,9 @@ export function extend (cls: Function, base: Function): Function | undefined {
  */
 // eslint-disable-next-line @typescript-eslint/ban-types
 export function getSuper (constructor: Function): any {
+    if (!constructor || typeof constructor !== 'function') {
+        return null;
+    }
     const proto = constructor.prototype; // bound function do not have prototype
     const dunderProto = proto && Object.getPrototypeOf(proto);
     // eslint-disable-next-line @typescript-eslint/no-unsafe-return

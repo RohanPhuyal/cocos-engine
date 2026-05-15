@@ -145,6 +145,9 @@ export class AnimationCache {
             this.totalTime += FrameTime;
             this._instance!.updateAnimation(FrameTime);
             const model = this._instance!.updateRenderData();
+            if (!model) {
+                return;
+            }
             this.updateRenderData(this._frameIdx, model);
             if (this._frameIdx >= this._maxFrameIdex) {
                 this.isCompleted = true;

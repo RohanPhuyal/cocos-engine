@@ -37,6 +37,7 @@ require('./jsb-webview.js');
 require('./jsb-editbox.js');
 require('./jsb-editor-support.js');
 require('./jsb-spine-skeleton.js');
+require('./jsb-spine4-skeleton.js');
 require('./jsb-dragonbones.js');
 
 if (cc.physics && cc.physics.PhysicsSystem.PHYSICS_PHYSX) { require('./jsb-physics.js'); }

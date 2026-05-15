@@ -34,11 +34,12 @@
 
 using namespace spine4; //NOLINT
 using namespace cc; //NOLINT
+using namespace cc::spine4; //NOLINT
 
 
 static uint16_t quadTriangles[6] = {0, 1, 2, 2, 3, 0};
 
-extern "C" AttachmentVertices *generateAttachmentVertices(Attachment *attachment) {
+extern "C" AttachmentVertices *generateAttachmentVerticesSpine4(Attachment *attachment) {
     AttachmentVertices *attachmentVertices = nullptr;
     if (attachment->getRTTI().isExactly(RegionAttachment::rtti)) {
         auto *regionAttachMent = static_cast<RegionAttachment *>(attachment);
@@ -109,7 +110,7 @@ void saveAttachmentVertices(SkeletonDataInfo *info) {
             Skin::AttachmentMap::Entry &entry = entries.next();
             auto *attachment = entry._attachment;
             if (attachmentVerticesMap.count(attachment) < 1) {
-                auto *attachmentVertices = generateAttachmentVertices(attachment);
+                auto *attachmentVertices = generateAttachmentVerticesSpine4(attachment);
                 if (attachmentVertices) {
                     attachmentVerticesMap[attachment] = attachmentVertices;
                 }

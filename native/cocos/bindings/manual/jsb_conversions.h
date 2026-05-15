@@ -43,7 +43,7 @@
 #include "jsb_conversions_spec.h"
 #include "core/data/JSBNativeDataHolder.h"
 
-#if CC_USE_SPINE
+#if CC_USE_SPINE && !defined(CC_SKIP_SPINE_JSB_CONVERSIONS)
     #include "cocos/editor-support/spine-creator-support/spine-cocos2dx.h"
 #endif
 
@@ -1380,7 +1380,7 @@ bool nativevalue_to_se_args_v(se::ValueArray &array, Args &&...args) { // NOLINT
 }
 
 // Spine conversions
-#if CC_USE_SPINE
+#if CC_USE_SPINE && !defined(CC_SKIP_SPINE_JSB_CONVERSIONS)
 
 template <typename T>
 bool nativevalue_to_se(const spine::Vector<T> &v, se::Value &ret, se::Object * /*ctx*/) { // NOLINT(readability-identifier-naming)
@@ -1488,7 +1488,7 @@ bool sevalue_to_native(const se::Value &v, spine::Vector<T> *ret, se::Object * /
 
     return true;
 }
-#endif // CC_USE_SPINE
+#endif // CC_USE_SPINE && !CC_SKIP_SPINE_JSB_CONVERSIONS
 
 /////////////////// shorter form
 template <typename T>
