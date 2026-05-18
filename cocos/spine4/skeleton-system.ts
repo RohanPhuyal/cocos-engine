@@ -90,4 +90,4 @@ export class SkeletonSystem extends System {
         });
     }
 }
-legacyCC.internal.SpineSkeletonSystem = SkeletonSystem;
+legacyCC.internal.Spine4SkeletonSystem = SkeletonSystem;

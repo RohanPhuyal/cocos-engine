@@ -40,6 +40,7 @@ import { SkeletonSystem } from './skeleton-system';
 import { RenderEntity, RenderEntityType } from '../2d/renderer/render-entity';
 import { AttachUtil } from './attach-util';
 import spine from './lib/spine-core';
+import spine3 from '../spine/lib/spine-core';
 import { VertexEffectDelegate } from './vertex-effect-delegate';
 import SkeletonCache, { AnimationCache, AnimationFrame, SkeletonCacheItemInfo } from './skeleton-cache';
 import { TrackEntryListeners } from './track-entry-listeners';
@@ -52,6 +53,41 @@ function isSkeletonDataValid (skeletonData: any): boolean {
         && typeof skeletonData.isEmpty === 'function'
         && typeof skeletonData.getRuntimeData === 'function'
         && !skeletonData.isEmpty();
+}
+
+function detectSpineVersionFromAsset (skeletonData: any): string | undefined {
+    if (!skeletonData) {
+        return undefined;
+    }
+    const jsonVersion = skeletonData?._skeletonJson?.skeleton?.spine as string | undefined;
+    if (jsonVersion) {
+        return jsonVersion;
+    }
+    const atlasText = skeletonData?._atlasText as string | undefined;
+    if (atlasText) {
+        if (/(^|\n)\s*(bounds|offsets)\s*:/m.test(atlasText)) {
+            return '4.0.0';
+        }
+        if (/(^|\n)\s*(xy|orig|offset)\s*:/m.test(atlasText)) {
+            return '3.8.0';
+        }
+    }
+    const nativeAsset = skeletonData?._nativeAsset as ArrayBuffer | undefined;
+    if (!nativeAsset || nativeAsset.byteLength <= 0) {
+        return undefined;
+    }
+    try {
+        const bytes = new Uint8Array(nativeAsset);
+        const maxLen = Math.min(bytes.length, 2048);
+        let textHead = '';
+        for (let i = 0; i < maxLen; ++i) {
+            textHead += String.fromCharCode(bytes[i]);
+        }
+        const match = /"spine"\s*:\s*"([^"]+)"/.exec(textHead);
+        return match?.[1];
+    } catch {
+        return undefined;
+    }
 }
 
 function readSlotBlendMode (slotData: any): any {
@@ -185,9 +221,8 @@ function resolvePremultipliedAlpha (current: boolean, skeletonData: any, runtime
 
 function createRuntimeSkeletonInstance (): spine.SkeletonInstance | null {
     const spine4Global = (globalThis as Record<string, any>).spine4 as Record<string, any> | undefined;
-    const spineGlobal = (globalThis as Record<string, any>).spine as Record<string, any> | undefined;
     const ctor = JSB
-        ? (spine4Global?.SkeletonInstance ?? spineGlobal?.SkeletonInstance ?? (spine as any).SkeletonInstance)
+        ? (spine4Global?.SkeletonInstance ?? (spine as any).SkeletonInstance)
         : (spine as any).SkeletonInstance;
     if (typeof ctor !== 'function') {
         return null;
@@ -521,6 +556,11 @@ export class Skeleton extends UIRenderer {
         return this._skeletonData;
     }
     set skeletonData (value: any) {
+        const version = detectSpineVersionFromAsset(value);
+        if (version?.startsWith('3.')) {
+            error('[sp4.Skeleton] Spine 3.x data must use sp.Skeleton component.');
+            return;
+        }
         if (value && typeof value.resetEnums === 'function') {
             value.resetEnums();
         }
@@ -949,6 +989,11 @@ export class Skeleton extends UIRenderer {
         //this.setSkeletonData(data);
         this._runtimeData = skeletonData!.getRuntimeData();
         if (!this._runtimeData) {
+            return;
+        }
+        const spine3SkeletonDataCtor = (spine3 as any).SkeletonData as (new (...args: any[]) => any) | undefined;
+        if (spine3SkeletonDataCtor && this._runtimeData instanceof spine3SkeletonDataCtor) {
+            error('[sp4.Skeleton] Runtime Spine 3.x data detected. Use sp.Skeleton component.');
             return;
         }
         const shaderFallback = { value: false };
@@ -2148,4 +2193,4 @@ export class Skeleton extends UIRenderer {
     }
 }
 
-legacyCC.internal.SpineSkeleton = Skeleton;
+legacyCC.internal.Spine4Skeleton = Skeleton;

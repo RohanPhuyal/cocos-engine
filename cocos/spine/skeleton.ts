@@ -632,7 +632,12 @@ export class Skeleton extends UIRenderer {
         return this._skeletonData;
     }
     set skeletonData (value: SkeletonData | null) {
-        if (this._tryPromoteToSpine4Component(value)) {
+        const version = detectSpineVersionFromAsset(value);
+        if (version?.startsWith('4.') && this._tryPromoteToSpine4Component(value)) {
+            return;
+        }
+        if (version?.startsWith('4.')) {
+            error('[sp.Skeleton] Spine 4.x data must use sp4.Skeleton component.');
             return;
         }
         this._switchRuntimeBySkeletonData(value);
@@ -1064,6 +1069,11 @@ export class Skeleton extends UIRenderer {
         if (!this._runtimeData) {
             return;
         }
+        const spine4SkeletonDataCtor = (spine4 as any).SkeletonData as (new (...args: any[]) => any) | undefined;
+        if (spine4SkeletonDataCtor && this._runtimeData instanceof spine4SkeletonDataCtor) {
+            error('[sp.Skeleton] Runtime Spine 4.x data detected. Use sp4.Skeleton component.');
+            return;
+        }
         this._switchRuntimeByRuntimeData(this._runtimeData);
         const shaderFallback = { value: false };
         const wantPma = resolvePremultipliedAlpha(this._premultipliedAlpha, this._skeletonData, this._runtimeData, shaderFallback);
@@ -1146,13 +1156,30 @@ export class Skeleton extends UIRenderer {
                 this._skeleton = this._skeletonInfo.skeleton!;
             }
         } else {
-            if (!JSB && !this._instance) {
-                const instance = new this._runtimeSpine.SkeletonInstance();
+            const ensureRuntimeInstance = (): boolean => {
+                if (this._instance) {
+                    return true;
+                }
+                const SkeletonInstanceCtor = this._runtimeSpine?.SkeletonInstance;
+                if (!SkeletonInstanceCtor) {
+                    error('[spine] Failed to create runtime skeleton instance: SkeletonInstance constructor is unavailable.');
+                    return false;
+                }
+                const instance = new SkeletonInstanceCtor();
                 instance.dtRate = this._timeScale * timeScale;
                 instance.isCache = this.isAnimationCached();
                 this._instance = instance;
+                return true;
+            };
+
+            if (!ensureRuntimeInstance()) {
+                return;
             }
+
             const initSkeletonWithCurrentRuntime = (): void => {
+                if (!ensureRuntimeInstance()) {
+                    return;
+                }
                 this._skeleton = this._instance!.initSkeleton(skeletonData);
                 this._state = this._instance!.getAnimationState();
                 this._instance!.setPremultipliedAlpha(this._premultipliedAlpha);
@@ -1165,14 +1192,7 @@ export class Skeleton extends UIRenderer {
                 if (JSB || !message.includes('SkeletonData')) {
                     throw err;
                 }
-
-                const fallbackRuntime = this._runtimeSpine === spine ? spine4 : spine;
-                this._runtimeSpine = fallbackRuntime;
-                const instance = new this._runtimeSpine.SkeletonInstance();
-                instance.dtRate = this._timeScale * timeScale;
-                instance.isCache = this.isAnimationCached();
-                this._instance = instance;
-                initSkeletonWithCurrentRuntime();
+                throw err;
             }
         }
         if (this._isRenderable) {

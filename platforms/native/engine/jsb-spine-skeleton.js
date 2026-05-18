@@ -25,9 +25,18 @@
 const cacheManager = require('./jsb-cache-manager');
 
 // @ts-expect-error jsb polyfills
-(function () {
-    if (globalThis.spine === undefined || globalThis.middleware === undefined) return;
-    if (cc.internal.SpineSkeletonData === undefined) return;
+(function patchSpineJsb (retryCount = 0) {
+    const getClassByName = cc?.js?.getClassByName?.bind(cc.js);
+    const spineSkeletonCtor = getClassByName ? getClassByName('sp.Skeleton') : null;
+    const internal = cc && cc.internal;
+    if (globalThis.spine === undefined
+        || globalThis.middleware === undefined
+        || !internal
+        || internal.SpineSkeletonData === undefined
+        || !spineSkeletonCtor) {
+        setTimeout(() => patchSpineJsb(retryCount + 1), 16);
+        return;
+    }
     const spine = globalThis.spine;
     const middleware = globalThis.middleware;
 
@@ -317,8 +326,8 @@ const cacheManager = require('./jsb-cache-manager');
         });
     };
 
-    const skeleton = cc.internal.SpineSkeleton.prototype;
-    const AnimationCacheMode = cc.internal.SpineSkeleton.AnimationCacheMode;
+    const skeleton = spineSkeletonCtor.prototype;
+    const AnimationCacheMode = spineSkeletonCtor.AnimationCacheMode;
     Object.defineProperty(skeleton, 'paused', {
         get () {
             return this._paused || false;

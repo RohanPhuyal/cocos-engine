@@ -368,4 +368,4 @@ function cacheTraverse (comp: Skeleton): void {
     }
 }
 
-legacyCC.internal.SpineAssembler = simple;
+legacyCC.internal.Spine4Assembler = simple;

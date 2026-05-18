@@ -28,13 +28,13 @@ const cacheManager = require('./jsb-cache-manager');
 (function patchSpine4Jsb (retryCount = 0) {
     const getClassByName = cc?.js?.getClassByName?.bind(cc.js);
     const spine4SkeletonCtor = getClassByName ? getClassByName('sp4.Skeleton') : null;
+    const internal = cc && cc.internal;
     if (globalThis.spine4 === undefined
         || globalThis.middleware === undefined
-        || cc.internal.Spine4SkeletonData === undefined
+        || !internal
+        || internal.Spine4SkeletonData === undefined
         || !spine4SkeletonCtor) {
-        if (retryCount < 100) {
-            setTimeout(() => patchSpine4Jsb(retryCount + 1), 0);
-        }
+        setTimeout(() => patchSpine4Jsb(retryCount + 1), 16);
         return;
     }
     const spine = globalThis.spine4;
@@ -1086,7 +1086,7 @@ const cacheManager = require('./jsb-cache-manager');
 
     //////////////////////////////////////////
     // assembler
-    const assembler = cc.internal.SpineAssembler;
+    const assembler = cc.internal.Spine4Assembler || cc.internal.SpineAssembler;
 
     // eslint-disable-next-line no-unused-vars
     assembler.createData = function (comp) {

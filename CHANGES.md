@@ -266,3 +266,36 @@ $env:SPINE_VERSION="both"; npx gulp gen-simulator-release
 - After preview recovery, we ported the 2.8 PMA/screen blend behavior to 3.8, then adjusted for 3.8 API removals.
 - We fixed mixed-runtime rendering conflict by splitting static buffer accessor IDs.
 - Finally, we introduced shader-time PMA fallback to better match 2.8 blending appearance while keeping source textures untouched.
+
+---
+
+## Post-Validation Native iOS Follow-Up (2026-05-18)
+
+After the initial dual-runtime merge, native iOS device build (Xcode -> iPhone SE 3rd gen) still failed at runtime with:
+- `[spine] Failed to create runtime skeleton instance: SkeletonInstance constructor is unavailable.`
+- `TypeError: Cannot read properties of null (reading 'setSkin')`
+
+### Root Cause
+- JSB Spine patching could run before runtime classes were registered on device startup and stop retrying too early.
+- Spine4 internals were still exported under generic `legacyCC.internal.Spine*` keys in a few places, allowing cross-runtime override/collision.
+
+### Fixes Applied
+- `platforms/native/engine/jsb-spine-skeleton.js`
+  - Bind patched prototype explicitly via `getClassByName('sp.Skeleton')`.
+  - Keep retrying with frame-delay (`setTimeout(..., 16)`) until `sp.Skeleton` and required globals are ready.
+- `platforms/native/engine/jsb-spine4-skeleton.js`
+  - Keep retrying until `sp4.Skeleton` and required globals are ready.
+  - Prefer `cc.internal.Spine4Assembler` (fallback to `SpineAssembler` only if missing).
+- `cocos/spine4/skeleton.ts`
+  - Export to `legacyCC.internal.Spine4Skeleton` (instead of generic `SpineSkeleton`).
+- `cocos/spine4/skeleton-system.ts`
+  - Export to `legacyCC.internal.Spine4SkeletonSystem`.
+- `cocos/spine4/assembler/simple.ts`
+  - Export to `legacyCC.internal.Spine4Assembler`.
+
+### Outcome
+- Native iOS device render path recovers and scene renders normally.
+- Runtime split remains strict:
+  - Spine 3.x -> `sp.Skeleton`
+  - Spine 4.x -> `sp4.Skeleton`
+- JSB patch no longer binds to the wrong lane due to internal namespace collisions.
