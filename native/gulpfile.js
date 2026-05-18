@@ -82,26 +82,13 @@ gulp.task('gen-simulator', async function () {
             args.push(`-DCMAKE_OSX_ARCHITECTURES=x86_64;arm64`);
         }
 
-        const spineVersion = process.env.SPINE_VERSION || 'both';
-        if (spineVersion === 'both') {
-            args.push('-DUSE_SPINE=ON');
-            args.push('-DUSE_SPINE_DUAL_RUNTIME=ON');
-            args.push('-DUSE_SPINE_3_8=ON');
-            args.push('-DUSE_SPINE_4_2=OFF');
-            args.push('-DUSE_SPINE4=ON');
-        } else if (spineVersion === '3.8') {
-            args.push('-DUSE_SPINE=ON');
-            args.push('-DUSE_SPINE_DUAL_RUNTIME=OFF');
-            args.push('-DUSE_SPINE_3_8=ON')
-            args.push('-DUSE_SPINE_4_2=OFF')
-            args.push('-DUSE_SPINE4=OFF');
-        } else if (spineVersion === '4.2') {
-            args.push('-DUSE_SPINE=ON');
-            args.push('-DUSE_SPINE_DUAL_RUNTIME=OFF');
-            args.push('-DUSE_SPINE_3_8=OFF')
-            args.push('-DUSE_SPINE_4_2=ON')
-            args.push('-DUSE_SPINE4=OFF');
-        }
+        // Always use dual-runtime mode for simulator/native:
+        // Spine 3.x lane (spine/3.8) + Spine 4.x lane (spine4/4.2).
+        args.push('-DUSE_SPINE=ON');
+        args.push('-DUSE_SPINE_DUAL_RUNTIME=ON');
+        args.push('-DUSE_SPINE_3_8=ON');
+        args.push('-DUSE_SPINE_4_2=OFF');
+        args.push('-DUSE_SPINE4=ON');
 
         args.push('-DCC_DEBUG_FORCE=ON','-DUSE_V8_DEBUGGER_FORCE=ON');
         args.push(absolutePath('./tools/simulator/frameworks/runtime-src/'));
