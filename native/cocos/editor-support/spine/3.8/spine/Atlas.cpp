@@ -82,6 +82,7 @@ Atlas::~Atlas() {
 void Atlas::flipV() {
     for (size_t i = 0, n = _regions.size(); i < n; ++i) {
         AtlasRegion *regionP = _regions[i];
+        if (!regionP) continue;
         AtlasRegion &region = *regionP;
         region.v = 1 - region.v;
         region.v2 = 1 - region.v2;
@@ -89,8 +90,11 @@ void Atlas::flipV() {
 }
 
 AtlasRegion *Atlas::findRegion(const String &name) {
-    for (size_t i = 0, n = _regions.size(); i < n; ++i)
-        if (_regions[i]->name == name) return _regions[i];
+    for (size_t i = 0, n = _regions.size(); i < n; ++i) {
+        AtlasRegion *region = _regions[i];
+        if (!region) continue;
+        if (region->name == name) return region;
+    }
     return NULL;
 }
 
@@ -130,15 +134,27 @@ void Atlas::load(const char *begin, int length, const char *dir, bool createText
             /* size is only optional for an atlas packed with an old TexturePacker. */
             page->width = toInt(tuple);
             page->height = toInt(tuple + 1);
-            readTuple(&begin, end, tuple);
+            if (readTuple(&begin, end, tuple) < 1) {
+                SpineExtension::free(path, __SPINE_FILE__, __SPINE_LINE__);
+                delete page;
+                return;
+            }
 
             page->format = (Format)indexOf(formatNames, 8, tuple);
 
-            readTuple(&begin, end, tuple);
+            if (readTuple(&begin, end, tuple) < 2) {
+                SpineExtension::free(path, __SPINE_FILE__, __SPINE_LINE__);
+                delete page;
+                return;
+            }
             page->minFilter = (TextureFilter)indexOf(textureFilterNames, 8, tuple);
             page->magFilter = (TextureFilter)indexOf(textureFilterNames, 8, tuple + 1);
 
-            readValue(&begin, end, &str);
+            if (!readValue(&begin, end, &str)) {
+                SpineExtension::free(path, __SPINE_FILE__, __SPINE_LINE__);
+                delete page;
+                return;
+            }
 
             page->uWrap = TextureWrap_ClampToEdge;
             page->vWrap = TextureWrap_ClampToEdge;
@@ -168,7 +184,10 @@ void Atlas::load(const char *begin, int length, const char *dir, bool createText
             region->page = page;
             region->name = String(mallocString(&str), true);
 
-            readValue(&begin, end, &str);
+            if (!readValue(&begin, end, &str)) {
+                delete region;
+                return;
+            }
             if (equals(&str, "true"))
                 region->degrees = 90;
             else if (equals(&str, "false"))
@@ -177,14 +196,14 @@ void Atlas::load(const char *begin, int length, const char *dir, bool createText
                 region->degrees = toInt(&str);
             region->rotate = region->degrees == 90;
 
-            if (readTuple(&begin, end, tuple) == 0) {
+            if (readTuple(&begin, end, tuple) < 2) {
                 delete region;
                 return;
             }
             region->x = toInt(tuple);
             region->y = toInt(tuple + 1);
 
-            if (readTuple(&begin, end, tuple) == 0) {
+            if (readTuple(&begin, end, tuple) < 2) {
                 delete region;
                 return;
             }
@@ -202,7 +221,7 @@ void Atlas::load(const char *begin, int length, const char *dir, bool createText
             }
 
             count = readTuple(&begin, end, tuple);
-            if (count == 0) {
+            if (count != 2 && count != 4) {
                 delete region;
                 return;
             }
@@ -216,7 +235,7 @@ void Atlas::load(const char *begin, int length, const char *dir, bool createText
                 region->splits[3] = toInt(tuple + 3);
 
                 count = readTuple(&begin, end, tuple);
-                if (count == 0) {
+                if (count != 2 && count != 4) {
                     delete region;
                     return;
                 }
@@ -229,18 +248,27 @@ void Atlas::load(const char *begin, int length, const char *dir, bool createText
                     region->pads[2] = toInt(tuple + 2);
                     region->pads[3] = toInt(tuple + 3);
 
-                    readTuple(&begin, end, tuple);
+                    if (readTuple(&begin, end, tuple) < 2) {
+                        delete region;
+                        return;
+                    }
                 }
             }
 
             region->originalWidth = toInt(tuple);
             region->originalHeight = toInt(tuple + 1);
 
-            readTuple(&begin, end, tuple);
+            if (readTuple(&begin, end, tuple) < 2) {
+                delete region;
+                return;
+            }
             region->offsetX = (float)toInt(tuple);
             region->offsetY = (float)toInt(tuple + 1);
 
-            readValue(&begin, end, &str);
+            if (!readValue(&begin, end, &str)) {
+                delete region;
+                return;
+            }
 
             region->index = toInt(&str);
 

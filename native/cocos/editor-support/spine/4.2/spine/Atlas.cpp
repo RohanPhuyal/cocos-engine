@@ -79,6 +79,7 @@ Atlas::~Atlas() {
 void Atlas::flipV() {
 	for (size_t i = 0, n = _regions.size(); i < n; ++i) {
 		AtlasRegion *regionP = _regions[i];
+		if (!regionP) continue;
 		AtlasRegion &region = *regionP;
 		region.v = 1 - region.v;
 		region.v2 = 1 - region.v2;
@@ -86,9 +87,12 @@ void Atlas::flipV() {
 }
 
 AtlasRegion *Atlas::findRegion(const String &name) {
-	for (size_t i = 0, n = _regions.size(); i < n; ++i)
-		if (_regions[i]->name == name) return _regions[i];
-	return NULL;
+    for (size_t i = 0, n = _regions.size(); i < n; ++i) {
+        AtlasRegion *region = _regions[i];
+        if (!region) continue;
+        if (region->name == name) return region;
+    }
+    return NULL;
 }
 
 Vector<AtlasPage *> &Atlas::getPages() {
@@ -184,17 +188,17 @@ struct AtlasInput {
 
 	AtlasInput(const char *data, int length) : start(data), end(data + length), index((char *) data), length(length) {}
 
-	SimpleString *readLine() {
-		if (index >= end) return 0;
-		line.start = index;
-		while (index < end && *index != '\n')
-			index++;
-		line.end = index;
-		if (index != end) index++;
-		line = line.trim();
-		line.length = (int) (end - start);
-		return &line;
-	}
+		SimpleString *readLine() {
+			if (index >= end) return 0;
+			line.start = index;
+			while (index < end && *index != '\n')
+				index++;
+			line.end = index;
+			if (index != end) index++;
+			line = line.trim();
+			line.length = (int) (line.end - line.start);
+			return &line;
+		}
 
 	static int readEntry(SimpleString entry[5], SimpleString *line) {
 		if (line == NULL) return 0;
@@ -259,84 +263,130 @@ void Atlas::load(const char *begin, int length, const char *dir, bool createText
 			strcpy(path + dirLength + needsSlash, name);
 			page = new (__FILE__, __LINE__) AtlasPage(String(name, true));
 
-			while (true) {
-				line = reader.readLine();
-				if (reader.readEntry(entry, line) == 0) break;
-				if (entry[0].equals("size")) {
-					page->width = entry[1].toInt();
-					page->height = entry[2].toInt();
-				} else if (entry[0].equals("format")) {
-					page->format = (Format) indexOf(formatNames, 8, &entry[1]);
-				} else if (entry[0].equals("filter")) {
-					page->minFilter = (TEXTURE_FILTER_ENUM) indexOf(textureFilterNames, 8, &entry[1]);
-					page->magFilter = (TEXTURE_FILTER_ENUM) indexOf(textureFilterNames, 8, &entry[2]);
-				} else if (entry[0].equals("repeat")) {
-					page->uWrap = TextureWrap_ClampToEdge;
-					page->vWrap = TextureWrap_ClampToEdge;
-					if (entry[1].indexOf('x') != -1) page->uWrap = TextureWrap_Repeat;
-					if (entry[1].indexOf('y') != -1) page->vWrap = TextureWrap_Repeat;
-				} else if (entry[0].equals("pma")) {
-					page->pma = entry[1].equals("true");
+				while (true) {
+					line = reader.readLine();
+					int count = reader.readEntry(entry, line);
+					if (count == 0) break;
+					if (entry[0].equals("size")) {
+						if (count < 2) continue;
+						page->width = entry[1].toInt();
+						page->height = entry[2].toInt();
+					} else if (entry[0].equals("format")) {
+						page->format = (Format) indexOf(formatNames, 8, &entry[1]);
+					} else if (entry[0].equals("filter")) {
+						if (count < 2) continue;
+						page->minFilter = (TEXTURE_FILTER_ENUM) indexOf(textureFilterNames, 8, &entry[1]);
+						page->magFilter = (TEXTURE_FILTER_ENUM) indexOf(textureFilterNames, 8, &entry[2]);
+					} else if (entry[0].equals("repeat")) {
+						if (count < 1) continue;
+						page->uWrap = TextureWrap_ClampToEdge;
+						page->vWrap = TextureWrap_ClampToEdge;
+						if (entry[1].indexOf('x') != -1) page->uWrap = TextureWrap_Repeat;
+						if (entry[1].indexOf('y') != -1) page->vWrap = TextureWrap_Repeat;
+					} else if (entry[0].equals("pma")) {
+						if (count < 1) continue;
+						page->pma = entry[1].equals("true");
+					}
 				}
-			}
 
 			page->index = (int) _pages.size();
 			if (createTexture && _textureLoader) _textureLoader->load(*page, String(path));
 			page->texturePath = String(path, true);
 			_pages.add(page);
-		} else {
-			AtlasRegion *region = new (__FILE__, __LINE__) AtlasRegion();
-			region->page = page;
-			region->rendererObject = page->texture;
-			region->name = String(line->copy(), true);
-			while (true) {
-				line = reader.readLine();
-				int count = reader.readEntry(entry, line);
-				if (count == 0) break;
-				if (entry[0].equals("xy")) {
-					region->x = entry[1].toInt();
-					region->y = entry[2].toInt();
-				} else if (entry[0].equals("size")) {
-					region->width = entry[1].toInt();
-					region->height = entry[2].toInt();
-				} else if (entry[0].equals("bounds")) {
-					region->x = entry[1].toInt();
-					region->y = entry[2].toInt();
-					region->width = entry[3].toInt();
-					region->height = entry[4].toInt();
-				} else if (entry[0].equals("offset")) {
-					region->offsetX = entry[1].toInt();
-					region->offsetY = entry[2].toInt();
-				} else if (entry[0].equals("orig")) {
-					region->originalWidth = entry[1].toInt();
-					region->originalHeight = entry[2].toInt();
-				} else if (entry[0].equals("offsets")) {
-					region->offsetX = entry[1].toInt();
-					region->offsetY = entry[2].toInt();
-					region->originalWidth = entry[3].toInt();
-					region->originalHeight = entry[4].toInt();
-				} else if (entry[0].equals("rotate")) {
-					if (entry[1].equals("true")) {
-						region->degrees = 90;
-					} else if (!entry[1].equals("false")) {
-						region->degrees = entry[1].toInt();
-					}
-				} else if (entry[0].equals("index")) {
-					region->index = entry[1].toInt();
-				} else {
-					region->names.add(String(entry[0].copy()));
-					for (int i = 0; i < count; i++) {
-						region->values.add(entry[i + 1].toInt());
+			} else {
+				AtlasRegion *region = new (__FILE__, __LINE__) AtlasRegion();
+				bool regionValid = true;
+				region->page = page;
+				region->rendererObject = page->texture;
+				region->name = String(line->copy(), true);
+				while (true) {
+					line = reader.readLine();
+					int count = reader.readEntry(entry, line);
+					if (count == 0) break;
+					if (entry[0].equals("xy")) {
+						if (count < 2) {
+							regionValid = false;
+							break;
+						}
+						region->x = entry[1].toInt();
+						region->y = entry[2].toInt();
+					} else if (entry[0].equals("size")) {
+						if (count < 2) {
+							regionValid = false;
+							break;
+						}
+						region->width = entry[1].toInt();
+						region->height = entry[2].toInt();
+					} else if (entry[0].equals("bounds")) {
+						if (count < 4) {
+							regionValid = false;
+							break;
+						}
+						region->x = entry[1].toInt();
+						region->y = entry[2].toInt();
+						region->width = entry[3].toInt();
+						region->height = entry[4].toInt();
+					} else if (entry[0].equals("offset")) {
+						if (count < 2) {
+							regionValid = false;
+							break;
+						}
+						region->offsetX = entry[1].toInt();
+						region->offsetY = entry[2].toInt();
+					} else if (entry[0].equals("orig")) {
+						if (count < 2) {
+							regionValid = false;
+							break;
+						}
+						region->originalWidth = entry[1].toInt();
+						region->originalHeight = entry[2].toInt();
+					} else if (entry[0].equals("offsets")) {
+						if (count < 4) {
+							regionValid = false;
+							break;
+						}
+						region->offsetX = entry[1].toInt();
+						region->offsetY = entry[2].toInt();
+						region->originalWidth = entry[3].toInt();
+						region->originalHeight = entry[4].toInt();
+					} else if (entry[0].equals("rotate")) {
+						if (count < 1) {
+							regionValid = false;
+							break;
+						}
+						if (entry[1].equals("true")) {
+							region->degrees = 90;
+						} else if (!entry[1].equals("false")) {
+							region->degrees = entry[1].toInt();
+						}
+					} else if (entry[0].equals("index")) {
+						if (count < 1) {
+							regionValid = false;
+							break;
+						}
+						region->index = entry[1].toInt();
+					} else {
+						region->names.add(String(entry[0].copy()));
+						for (int i = 0; i < count; i++) {
+							region->values.add(entry[i + 1].toInt());
+						}
 					}
 				}
-			}
-			if (region->originalWidth == 0 && region->originalHeight == 0) {
-				region->originalWidth = region->width;
-				region->originalHeight = region->height;
-			}
+				if (!regionValid) {
+					delete region;
+					continue;
+				}
+				if (region->originalWidth == 0 && region->originalHeight == 0) {
+					region->originalWidth = region->width;
+					region->originalHeight = region->height;
+				}
+				if (page->width <= 0 || page->height <= 0) {
+					delete region;
+					continue;
+				}
 
-			region->u = (float) region->x / page->width;
-			region->v = (float) region->y / page->height;
+				region->u = (float) region->x / page->width;
+				region->v = (float) region->y / page->height;
 			if (region->degrees == 90) {
 				region->u2 = (float) (region->x + region->height) / page->width;
 				region->v2 = (float) (region->y + region->width) / page->height;
