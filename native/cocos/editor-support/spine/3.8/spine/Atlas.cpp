@@ -121,7 +121,11 @@ void Atlas::load(const char *begin, int length, const char *dir, bool createText
             page = spine_new AtlasPage(String(name, true));
 
             int tupleVal = readTuple(&begin, end, tuple);
-            assert(tupleVal == 2);
+            if (tupleVal != 2) {
+                SpineExtension::free(path, __SPINE_FILE__, __SPINE_LINE__);
+                delete page;
+                return;
+            }
 
             /* size is only optional for an atlas packed with an old TexturePacker. */
             page->width = toInt(tuple);
@@ -173,11 +177,17 @@ void Atlas::load(const char *begin, int length, const char *dir, bool createText
                 region->degrees = toInt(&str);
             region->rotate = region->degrees == 90;
 
-            readTuple(&begin, end, tuple);
+            if (readTuple(&begin, end, tuple) == 0) {
+                delete region;
+                return;
+            }
             region->x = toInt(tuple);
             region->y = toInt(tuple + 1);
 
-            readTuple(&begin, end, tuple);
+            if (readTuple(&begin, end, tuple) == 0) {
+                delete region;
+                return;
+            }
             region->width = toInt(tuple);
             region->height = toInt(tuple + 1);
 
@@ -192,7 +202,10 @@ void Atlas::load(const char *begin, int length, const char *dir, bool createText
             }
 
             count = readTuple(&begin, end, tuple);
-            assert(count);
+            if (count == 0) {
+                delete region;
+                return;
+            }
 
             if (count == 4) {
                 /* split is optional */
@@ -203,7 +216,10 @@ void Atlas::load(const char *begin, int length, const char *dir, bool createText
                 region->splits[3] = toInt(tuple + 3);
 
                 count = readTuple(&begin, end, tuple);
-                assert(count);
+                if (count == 0) {
+                    delete region;
+                    return;
+                }
 
                 if (count == 4) {
                     /* pad is optional, but only present with splits */
