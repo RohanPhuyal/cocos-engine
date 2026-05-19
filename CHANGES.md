@@ -83,6 +83,10 @@ Same class of updates as Spine3 counterpart:
 - Ported 2.8 Spine4 pose-refresh behavior into `spine4/skeleton`:
   - after `setAnimation`/`setSkin`, force refresh pose (`state.apply`, `skeleton.update(0)`, world transform)
   - use `Physics.reset` in editor non-play preview and `Physics.update` in play/runtime.
+- Ported Spine4 JSON compatibility preprocessing into `spine/skeleton-data` path as well, so assets still typed
+  as `sp.SkeletonData` but carrying Spine 4.x data get the same runtime normalization before 4.x WASM parse.
+- Updated editor atlas parser to accept Spine atlas page `scale` attribute (removes
+  `scale is not a valid attribute` inspector errors).
 
 ### 5) `cocos/spine/assembler/simple.ts`
 Mixed-runtime rendering collision fix:
@@ -177,6 +181,7 @@ Summary:
 - Spine4 render placement mismatch caused by forced anchor mutation in 3.8 Spine4 UITransform update path.
 - Spine4 bone deformation/detached parts caused by JSON compatibility mismatch with 4.2 runtime parser.
 - Spine4 preview/runtime bone drift/deformation caused by missing immediate pose refresh and wrong physics mode during world-transform update.
+- Spine4 assets loaded as `sp.SkeletonData` bypassed Spine4-specific JSON compatibility preprocessing.
 
 ---
 
