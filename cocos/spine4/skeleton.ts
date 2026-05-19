@@ -1215,6 +1215,7 @@ export class Skeleton extends UIRenderer {
         } else {
             this._animationName = name;
             trackEntry = this._instance!.setAnimation(trackIndex, name, loop);
+            this._refreshSkeletonPose();
         }
         this._markForUpdateRenderData();
         return trackEntry;
@@ -1292,8 +1293,14 @@ export class Skeleton extends UIRenderer {
      */
     public setSkin (name: string): void {
         if (!name) return;
-        if (this._skeleton) this._skeleton.setSkinByName(name);
-        this._instance!.setSkin(name);
+        if (this._skeleton) {
+            this._skeleton.setSkinByName(name);
+            this._skeleton.setSlotsToSetupPose();
+            this._refreshSkeletonPose();
+        }
+        if (this._instance) {
+            this._instance.setSkin(name);
+        }
         if (this.isAnimationCached()) {
             if (this._animCache) {
                 this._animCache.setSkin(name);
@@ -1799,6 +1806,23 @@ export class Skeleton extends UIRenderer {
         }
     }
 
+    private _refreshSkeletonPose (): void {
+        if (!this._skeleton) {
+            return;
+        }
+
+        if (!this.isAnimationCached() && this._state) {
+            this._state.apply(this._skeleton);
+            const runtimeSkeleton = this._skeleton as any;
+            if (typeof runtimeSkeleton.update === 'function') {
+                runtimeSkeleton.update(0);
+            }
+        }
+
+        this._updateRuntimeWorldTransform(this._skeleton as any);
+        this.markForUpdateRenderData();
+    }
+
     private _verifySockets (sockets: SpineSocket[]): void {
         for (let i = 0, l = sockets.length; i < l; i++) {
             const target = sockets[i].target;
@@ -1997,9 +2021,11 @@ export class Skeleton extends UIRenderer {
             return;
         }
 
-        const physicsUpdate = (spine as any).Physics?.update;
-        if (physicsUpdate !== undefined) {
-            runtimeSkeleton.updateWorldTransform(physicsUpdate);
+        const physics = (spine as any).Physics;
+        const isEditorPreview = !EDITOR_NOT_IN_PREVIEW && !legacyCC.engine?.isPlaying;
+        const physicsMode = isEditorPreview ? physics?.reset : physics?.update;
+        if (physicsMode !== undefined) {
+            runtimeSkeleton.updateWorldTransform(physicsMode);
             return;
         }
 
