@@ -1795,7 +1795,7 @@ export class Skeleton extends UIRenderer {
         if (!this.isAnimationCached()) return;
 
         if (this._skeleton) {
-            this._skeleton.updateWorldTransform();
+            this._updateRuntimeWorldTransform(this._skeleton as any);
         }
     }
 
@@ -1988,16 +1988,33 @@ export class Skeleton extends UIRenderer {
         }
 
         if (typeof runtimeSkeleton.updateWorldTransform === 'function') {
-            try {
-                const physicsUpdate = (spine as any).Physics?.update;
-                if (physicsUpdate !== undefined) {
-                    runtimeSkeleton.updateWorldTransform(physicsUpdate);
-                } else {
-                    runtimeSkeleton.updateWorldTransform();
-                }
-            } catch {
-                runtimeSkeleton.updateWorldTransform();
-            }
+            this._updateRuntimeWorldTransform(runtimeSkeleton);
+        }
+    }
+
+    private _updateRuntimeWorldTransform (runtimeSkeleton: any): void {
+        if (!runtimeSkeleton || typeof runtimeSkeleton.updateWorldTransform !== 'function') {
+            return;
+        }
+
+        const physicsUpdate = (spine as any).Physics?.update;
+        if (physicsUpdate !== undefined) {
+            runtimeSkeleton.updateWorldTransform(physicsUpdate);
+            return;
+        }
+
+        // Some embind Spine4 builds reject zero-arg overload; try enum-like default first.
+        try {
+            runtimeSkeleton.updateWorldTransform(0);
+            return;
+        } catch {
+            // noop, try zero-arg fallback below.
+        }
+
+        try {
+            runtimeSkeleton.updateWorldTransform();
+        } catch {
+            // Keep this silent: offset correction should never break scene loading.
         }
     }
 
