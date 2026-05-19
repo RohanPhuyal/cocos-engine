@@ -48,6 +48,80 @@ const cacheManager = require('./jsb-cache-manager');
         Object.defineProperty(target, key, descriptor);
     }
 
+    function normalizeNativeInheritMode (value) {
+        if (typeof value !== 'string') {
+            return '';
+        }
+        const normalized = value.trim().toLowerCase();
+        if (!normalized) {
+            return '';
+        }
+        switch (normalized) {
+        case 'normal':
+            return 'normal';
+        case 'onlytranslation':
+            return 'onlyTranslation';
+        case 'norotationorreflection':
+            return 'noRotationOrReflection';
+        case 'noscale':
+            return 'noScale';
+        case 'noscaleorreflection':
+            return 'noScaleOrReflection';
+        default:
+            return '';
+        }
+    }
+
+    function applyNativeBoneInheritCompat (json, dryRun) {
+        if (!json || !Array.isArray(json.bones) || json.bones.length === 0) {
+            return false;
+        }
+        let patched = false;
+        for (let i = 0; i < json.bones.length; i++) {
+            const bone = json.bones[i];
+            if (!bone || typeof bone !== 'object') continue;
+            const inheritValue = bone.inherit;
+            const normalizedInherit = normalizeNativeInheritMode(inheritValue);
+            if (normalizedInherit && inheritValue !== normalizedInherit) {
+                if (!dryRun) bone.inherit = normalizedInherit;
+                patched = true;
+            }
+            if (bone.inherit == null && typeof bone.transform === 'string') {
+                const normalizedTransform = normalizeNativeInheritMode(bone.transform);
+                if (normalizedTransform) {
+                    if (!dryRun) bone.inherit = normalizedTransform;
+                    patched = true;
+                }
+            }
+        }
+        return patched;
+    }
+
+    function getNativeCompatibleSkeletonJsonString (skeletonJson) {
+        if (!skeletonJson) {
+            return '';
+        }
+        let nativeJson = skeletonJson;
+        let patched = false;
+        const spineVersion = skeletonJson.skeleton && skeletonJson.skeleton.spine;
+        if (typeof spineVersion === 'string' && /^4\./.test(spineVersion) && !/^4\.2(\.|$)/.test(spineVersion)) {
+            nativeJson = JSON.parse(JSON.stringify(skeletonJson));
+            if (nativeJson.skeleton) {
+                nativeJson.skeleton.spine = '4.2.00';
+                patched = true;
+            }
+        }
+        const needsBoneInheritPatch = applyNativeBoneInheritCompat(nativeJson, true);
+        if (needsBoneInheritPatch) {
+            if (nativeJson === skeletonJson) {
+                nativeJson = JSON.parse(JSON.stringify(skeletonJson));
+            }
+            applyNativeBoneInheritCompat(nativeJson, false);
+            patched = true;
+        }
+        return patched ? JSON.stringify(nativeJson) : JSON.stringify(skeletonJson);
+    }
+
     middleware.generateGetSet(spine);
 
     // spine global time scale
@@ -147,8 +221,10 @@ const cacheManager = require('./jsb-cache-manager');
         }
         this._jsbTextures = jsbTextures;
 
-        let filePath = this.skeletonJsonStr;
-        if (!filePath) {
+        let filePath = '';
+        if (this.skeletonJson) {
+            filePath = getNativeCompatibleSkeletonJsonString(this.skeletonJson);
+        } else {
             filePath = cacheManager.getCache(this.nativeUrl) || this.nativeUrl;
         }
         if (!filePath) {
@@ -214,8 +290,10 @@ const cacheManager = require('./jsb-cache-manager');
         }
         skeletonData._jsbTextures = jsbTextures;
 
-        let filePath = skeletonData.skeletonJsonStr;
-        if (!filePath) {
+        let filePath = '';
+        if (skeletonData.skeletonJson) {
+            filePath = getNativeCompatibleSkeletonJsonString(skeletonData.skeletonJson);
+        } else {
             filePath = cacheManager.getCache(skeletonData.nativeUrl) || skeletonData.nativeUrl;
         }
         if (!filePath) {
@@ -338,6 +416,14 @@ const cacheManager = require('./jsb-cache-manager');
             return ensureTexturesPremultiplied(skeletonData);
         }
         return false;
+    }
+
+    function isSpine4SkeletonDataAsset (skeletonData) {
+        if (!skeletonData || !cc || !cc.js || typeof cc.js.getClassName !== 'function') {
+            return false;
+        }
+        const className = cc.js.getClassName(skeletonData.constructor);
+        return className === 'sp4.SkeletonData';
     }
 
     const animation = spine.SkeletonAnimation.prototype;
@@ -493,7 +579,7 @@ const cacheManager = require('./jsb-cache-manager');
     skeleton.setSkeletonData = function (skeletonData) {
         // Force native init in jsb path. In spine4, runtime cache may be populated by wasm,
         // which does not guarantee native SkeletonDataMgr registration.
-        if (typeof skeletonData.init === 'function') {
+        if (isSpine4SkeletonDataAsset(skeletonData) && typeof skeletonData.init === 'function') {
             skeletonData.init();
         }
         ensureNativeSpine4Data(skeletonData);
@@ -724,7 +810,19 @@ const cacheManager = require('./jsb-cache-manager');
 
     skeleton.setSkin = function (skinName) {
         this._skinName = skinName;
-        if (this._nativeSkeleton) return this._nativeSkeleton.setSkin(skinName);
+        if (this._nativeSkeleton) {
+            const result = this._nativeSkeleton.setSkin(skinName);
+            if (!this.isAnimationCached()) {
+                if (this._nativeSkeleton.setSlotsToSetupPose) {
+                    this._nativeSkeleton.setSlotsToSetupPose();
+                }
+                if (this._nativeSkeleton.updateWorldTransform) {
+                    this._nativeSkeleton.updateWorldTransform();
+                }
+                this.markForUpdateRenderData();
+            }
+            return result;
+        }
         return null;
     };
 
@@ -766,6 +864,9 @@ const cacheManager = require('./jsb-cache-manager');
              * and before setAnimation. it's need to update native animation to first frame directly.
              */
             this._nativeSkeleton.update(0);
+            if (!this.isAnimationCached() && this._nativeSkeleton.updateWorldTransform) {
+                this._nativeSkeleton.updateWorldTransform();
+            }
         }
         return res;
     };
@@ -921,7 +1022,10 @@ const cacheManager = require('./jsb-cache-manager');
 
     skeleton._updateSkeletonData = function () {
         if (this.skeletonData) {
-            this.skeletonData.init();
+            if (isSpine4SkeletonDataAsset(this.skeletonData) && typeof this.skeletonData.init === 'function') {
+                this.skeletonData.init();
+            }
+            ensureNativeSpine4Data(this.skeletonData);
             const runtimeData = typeof this.skeletonData.getRuntimeData === 'function' ? this.skeletonData.getRuntimeData() : null;
             const wantPma = resolvePremultipliedAlpha(this._premultipliedAlpha, this.skeletonData, runtimeData);
             if (wantPma !== this._premultipliedAlpha) {

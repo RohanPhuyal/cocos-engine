@@ -611,7 +611,19 @@ const cacheManager = require('./jsb-cache-manager');
 
     skeleton.setSkin = function (skinName) {
         this._skinName = skinName;
-        if (this._nativeSkeleton) return this._nativeSkeleton.setSkin(skinName);
+        if (this._nativeSkeleton) {
+            const result = this._nativeSkeleton.setSkin(skinName);
+            if (!this.isAnimationCached()) {
+                if (this._nativeSkeleton.setSlotsToSetupPose) {
+                    this._nativeSkeleton.setSlotsToSetupPose();
+                }
+                if (this._nativeSkeleton.updateWorldTransform) {
+                    this._nativeSkeleton.updateWorldTransform();
+                }
+                this.markForUpdateRenderData();
+            }
+            return result;
+        }
         return null;
     };
 
@@ -653,6 +665,9 @@ const cacheManager = require('./jsb-cache-manager');
              * and before setAnimation. it's need to update native animation to first frame directly.
              */
             this._nativeSkeleton.update(0);
+            if (!this.isAnimationCached() && this._nativeSkeleton.updateWorldTransform) {
+                this._nativeSkeleton.updateWorldTransform();
+            }
         }
         return res;
     };

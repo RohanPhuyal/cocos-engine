@@ -90,6 +90,13 @@ Same class of updates as Spine3 counterpart:
 - Fixed Spine inspector preview flow for Spine4 data routed through `sp.Skeleton`:
   - removed preview-path hard block that prevented Spine4 data from being assigned/parsed in preview
   - kept strict editor-node enforcement (`sp4.Skeleton` required) for normal scene nodes.
+- Native (JSB) parity fixes for Spine4 rendering path:
+  - `platforms/native/engine/jsb-spine4-skeleton.js` now applies the same Spine4 JSON compatibility normalization
+    (`bone.inherit`/`bone.transform` + `skeleton.spine -> 4.2.00`) before native init.
+  - Supports `sp4.Skeleton` receiving assets typed as `sp.SkeletonData` by forcing Spine4-native init path
+    instead of relying on `sp.SkeletonData.init()` (which is Spine3-native).
+  - Native `setSkin`/`setAnimation` now force immediate pose/world-transform refresh to align with web fixes.
+  - Mirrored immediate refresh behavior in `platforms/native/engine/jsb-spine-skeleton.js` for mixed scenes.
 
 ### 5) `cocos/spine/assembler/simple.ts`
 Mixed-runtime rendering collision fix:
@@ -186,6 +193,8 @@ Summary:
 - Spine4 preview/runtime bone drift/deformation caused by missing immediate pose refresh and wrong physics mode during world-transform update.
 - Spine4 assets loaded as `sp.SkeletonData` bypassed Spine4-specific JSON compatibility preprocessing.
 - Spine4 asset inspector preview stuck with empty/old skin-animation state because preview path aborted in `sp.Skeleton`.
+- Native Spine4 deformation in mixed `sp.SkeletonData` + `sp4.Skeleton` setups due to missing Spine4-native
+  data normalization/initialization and missing immediate pose refresh after skin/animation switches.
 
 ---
 
