@@ -320,6 +320,20 @@ void SkeletonRenderer::render(float /*deltaTime*/) {
         return;
     }
     auto &nodeWorldMat = _entity->getNode()->getWorldMatrix();
+
+    // Align native Spine4 setup-pose origin the same way as web/editor (anchor 0.5, 0.5 path).
+    if (_skeleton && _skeleton->getData()) {
+        auto *data = const_cast<::spine4::SkeletonData *>(_skeleton->getData());
+        const float setupX = data->getX();
+        const float setupY = data->getY();
+        const float setupW = data->getWidth();
+        const float setupH = data->getHeight();
+        const float offsetX = -setupX - setupW * 0.5F;
+        const float offsetY = -setupY - setupH * 0.5F;
+        _skeleton->setPosition(offsetX, offsetY);
+        _skeleton->updateWorldTransform(Physics::Physics_Update);
+    }
+
     // color range is [0.0, 1.0]
     cc::middleware::Color4F color;
     cc::middleware::Color4F darkColor;

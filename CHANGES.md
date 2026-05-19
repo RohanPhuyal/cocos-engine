@@ -16,6 +16,8 @@ This document summarizes the Spine 3.x / 4.x integration, preview, PMA, and blen
 - Deprecated texture PMA APIs were handled safely to avoid preview/drag errors.
 - Mixed-runtime rendering conflict (one runtime hiding the other) was fixed.
 - Shader-level PMA fallback was added for screen blend to improve visual parity vs 2.8 without destructive texture mutation.
+- Native Spine4 setup-pose alignment now matches web/editor anchor-0.5 placement for the mixed 3.x/4.x runtime lane.
+- Temporary debug probes used during editor/web/native parity validation were removed after verification.
 
 ---
 

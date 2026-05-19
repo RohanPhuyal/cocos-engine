@@ -1970,8 +1970,6 @@ export class Skeleton extends UIRenderer {
         const width = Number((skeletonData as any).width);
         const height = Number((skeletonData as any).height);
         if (Number.isFinite(width) && Number.isFinite(height) && width !== 0 && height !== 0) {
-            // Match the old 2.8 Spine4 behavior:
-            // keep user/node anchor untouched, only sync content size.
             uiTrans.setContentSize(width, height);
         }
         this._applySkeletonBoundsOffset(skeletonData);
