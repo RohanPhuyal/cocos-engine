@@ -75,6 +75,8 @@ Same class of updates as Spine3 counterpart:
 - Fixed UITransform fallback anchor typo (`anchorY` was incorrectly assigned to `anchorX`).
 - Added robust Spine4 world-transform invocation fallback for editor/WASM bindings where zero-arg
   `updateWorldTransform()` can throw embind argument errors.
+- Matched 2.8 Spine4 layout behavior by stopping automatic anchor rewrite from skeleton bounds
+  (`skeletonData.x/y`) in Spine4 UITransform sync; now Spine4 keeps the node's anchor and only updates content size.
 
 ### 5) `cocos/spine/assembler/simple.ts`
 Mixed-runtime rendering collision fix:
@@ -166,6 +168,7 @@ Summary:
 - PMA/screen blend mismatch and glow artifacts reduced via shader fallback alignment.
 - Spine4 runtime node/content alignment issues where assets appeared visually offset from expected node position.
 - Spine4 editor error: `Skeleton.updateWorldTransform called with invalid number of arguments (0)` during preload/drag.
+- Spine4 render placement mismatch caused by forced anchor mutation in 3.8 Spine4 UITransform update path.
 
 ---
 

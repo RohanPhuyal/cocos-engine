@@ -1943,12 +1943,12 @@ export class Skeleton extends UIRenderer {
             uiTrans.anchorY = 0.5;
             return;
         }
-        const width = skeletonData.width;
-        const height = skeletonData.height;
-        if (width && height) {
+        const width = Number((skeletonData as any).width);
+        const height = Number((skeletonData as any).height);
+        if (Number.isFinite(width) && Number.isFinite(height) && width !== 0 && height !== 0) {
+            // Match the old 2.8 Spine4 behavior:
+            // keep user/node anchor untouched, only sync content size.
             uiTrans.setContentSize(width, height);
-            if (width !== 0) uiTrans.anchorX = Math.abs(skeletonData.x) / width;
-            if (height !== 0) uiTrans.anchorY = Math.abs(skeletonData.y) / height;
         }
         this._applySkeletonBoundsOffset(skeletonData);
     }
