@@ -69,6 +69,10 @@ Same class of updates as Spine3 counterpart:
 - Material cache key includes PMA-shader fallback dimension.
 - Shader define forwarding:
   - `PREMULTIPLY_TEXTURE` passed in `recompileShaders(...)`
+- Restored 2.8-style runtime bounds offset application for Spine4 skeleton positioning:
+  - apply `offsetX/offsetY` from `skeletonData.x/y/width/height` + node anchor
+  - update runtime world transform after offset
+- Fixed UITransform fallback anchor typo (`anchorY` was incorrectly assigned to `anchorX`).
 
 ### 5) `cocos/spine/assembler/simple.ts`
 Mixed-runtime rendering collision fix:
@@ -158,6 +162,7 @@ Summary:
   - `TextureBase.prototype.setPremultiplyAlpha has been removed`
 - Mixed Spine3 + Spine4 rendering where one disappears.
 - PMA/screen blend mismatch and glow artifacts reduced via shader fallback alignment.
+- Spine4 runtime node/content alignment issues where assets appeared visually offset from expected node position.
 
 ---
 

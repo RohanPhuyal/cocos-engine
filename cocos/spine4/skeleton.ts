@@ -1096,6 +1096,7 @@ export class Skeleton extends UIRenderer {
             this._state = this._instance!.getAnimationState();
             this._instance!.setPremultipliedAlpha(this._premultipliedAlpha);
         }
+        this._applySkeletonBoundsOffset(skeletonData);
         if (this._isRenderable) {
             SkeletonSystem.getInstance().add(this);
         }
@@ -1939,7 +1940,7 @@ export class Skeleton extends UIRenderer {
         if (!skeletonData) {
             uiTrans.setContentSize(100, 100);
             uiTrans.anchorX = 0.5;
-            uiTrans.anchorX = 0.5;
+            uiTrans.anchorY = 0.5;
             return;
         }
         const width = skeletonData.width;
@@ -1948,6 +1949,55 @@ export class Skeleton extends UIRenderer {
             uiTrans.setContentSize(width, height);
             if (width !== 0) uiTrans.anchorX = Math.abs(skeletonData.x) / width;
             if (height !== 0) uiTrans.anchorY = Math.abs(skeletonData.y) / height;
+        }
+        this._applySkeletonBoundsOffset(skeletonData);
+    }
+
+    private _applySkeletonBoundsOffset (skeletonData: spine.SkeletonData | null | undefined): void {
+        if (this.isAnimationCached() || !this._skeleton || !skeletonData) {
+            return;
+        }
+
+        const width = Number((skeletonData as any).width);
+        const height = Number((skeletonData as any).height);
+        if (!Number.isFinite(width) || !Number.isFinite(height)) {
+            return;
+        }
+
+        let originX = Number((skeletonData as any).x);
+        let originY = Number((skeletonData as any).y);
+        if (!Number.isFinite(originX)) {
+            originX = 0;
+        }
+        if (!Number.isFinite(originY)) {
+            originY = 0;
+        }
+
+        const uiTrans = this.node._getUITransformComp();
+        const anchorX = uiTrans && Number.isFinite(uiTrans.anchorX) ? uiTrans.anchorX : 0.5;
+        const anchorY = uiTrans && Number.isFinite(uiTrans.anchorY) ? uiTrans.anchorY : 0.5;
+        const offsetX = -originX - width * anchorX;
+        const offsetY = -originY - height * anchorY;
+
+        const runtimeSkeleton = this._skeleton as any;
+        if (typeof runtimeSkeleton.setPosition === 'function') {
+            runtimeSkeleton.setPosition(offsetX, offsetY);
+        } else {
+            runtimeSkeleton.x = offsetX;
+            runtimeSkeleton.y = offsetY;
+        }
+
+        if (typeof runtimeSkeleton.updateWorldTransform === 'function') {
+            try {
+                const physicsUpdate = (spine as any).Physics?.update;
+                if (physicsUpdate !== undefined) {
+                    runtimeSkeleton.updateWorldTransform(physicsUpdate);
+                } else {
+                    runtimeSkeleton.updateWorldTransform();
+                }
+            } catch {
+                runtimeSkeleton.updateWorldTransform();
+            }
         }
     }
 
