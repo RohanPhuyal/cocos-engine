@@ -10,6 +10,9 @@
 .DS_Store
 
 lib
+# Keep engine source under /cocos fully trackable (including */lib folders).
+!/cocos/**
+cocos/**/.DS_Store
 build
 aspnet_client
 node_modules
