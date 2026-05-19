@@ -642,15 +642,11 @@ export class Skeleton extends UIRenderer {
     }
     set skeletonData (value: SkeletonData | null) {
         const version = detectSpineVersionFromAsset(value);
-        if (version?.startsWith('4.') && this._tryPromoteToSpine4Component(value)) {
+        const isSpine4Data = version?.startsWith('4.');
+        if (isSpine4Data && this._tryPromoteToSpine4Component(value)) {
             return;
         }
-        if (version?.startsWith('4.')) {
-            if (isAssetPreviewPlaceholderNode(this.node)) {
-                // Editor asset preview still routes through sp.Skeleton in some flows.
-                // Keep the preview path silent and non-invasive.
-                return;
-            }
+        if (isSpine4Data && EDITOR_NOT_IN_PREVIEW && !isAssetPreviewPlaceholderNode(this.node)) {
             error('[sp.Skeleton] Spine 4.x data must use sp4.Skeleton component.');
             return;
         }
@@ -1084,7 +1080,8 @@ export class Skeleton extends UIRenderer {
             return;
         }
         const spine4SkeletonDataCtor = (spine4 as any).SkeletonData as (new (...args: any[]) => any) | undefined;
-        if (spine4SkeletonDataCtor && this._runtimeData instanceof spine4SkeletonDataCtor) {
+        const runtimeIsSpine4 = !!spine4SkeletonDataCtor && this._runtimeData instanceof spine4SkeletonDataCtor;
+        if (runtimeIsSpine4 && EDITOR_NOT_IN_PREVIEW && !isAssetPreviewPlaceholderNode(this.node)) {
             error('[sp.Skeleton] Runtime Spine 4.x data detected. Use sp4.Skeleton component.');
             return;
         }

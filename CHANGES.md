@@ -87,6 +87,9 @@ Same class of updates as Spine3 counterpart:
   as `sp.SkeletonData` but carrying Spine 4.x data get the same runtime normalization before 4.x WASM parse.
 - Updated editor atlas parser to accept Spine atlas page `scale` attribute (removes
   `scale is not a valid attribute` inspector errors).
+- Fixed Spine inspector preview flow for Spine4 data routed through `sp.Skeleton`:
+  - removed preview-path hard block that prevented Spine4 data from being assigned/parsed in preview
+  - kept strict editor-node enforcement (`sp4.Skeleton` required) for normal scene nodes.
 
 ### 5) `cocos/spine/assembler/simple.ts`
 Mixed-runtime rendering collision fix:
@@ -182,6 +185,7 @@ Summary:
 - Spine4 bone deformation/detached parts caused by JSON compatibility mismatch with 4.2 runtime parser.
 - Spine4 preview/runtime bone drift/deformation caused by missing immediate pose refresh and wrong physics mode during world-transform update.
 - Spine4 assets loaded as `sp.SkeletonData` bypassed Spine4-specific JSON compatibility preprocessing.
+- Spine4 asset inspector preview stuck with empty/old skin-animation state because preview path aborted in `sp.Skeleton`.
 
 ---
 
