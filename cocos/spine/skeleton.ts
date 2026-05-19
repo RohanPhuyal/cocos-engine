@@ -224,6 +224,13 @@ function shouldSkipPromotionInPreviewNode (node: Node): boolean {
     return node.name === 'Spine';
 }
 
+function isAssetPreviewPlaceholderNode (node: Node | null): boolean {
+    if (!EDITOR_NOT_IN_PREVIEW || !node) {
+        return false;
+    }
+    return ((node._objFlags & CCObjectFlags.DontSave) !== 0) || shouldSkipPromotionInPreviewNode(node);
+}
+
 const CachedFrameTime = 1 / 60;
 
 type TrackListener = (x: spine.TrackEntry) => void;
@@ -572,7 +579,9 @@ export class Skeleton extends UIRenderer {
             return false;
         }
         // Avoid converting derived types and avoid re-entry if sp4 already exists.
-        if (js.getClassName(this.constructor) !== 'sp.Skeleton') {
+        // `cc.Skeleton` is an alias route used by editor-side createNode flows.
+        const className = js.getClassName(this.constructor);
+        if (className !== 'sp.Skeleton' && className !== 'cc.Skeleton') {
             return false;
         }
         const node = this.node;
@@ -637,6 +646,11 @@ export class Skeleton extends UIRenderer {
             return;
         }
         if (version?.startsWith('4.')) {
+            if (isAssetPreviewPlaceholderNode(this.node)) {
+                // Editor asset preview still routes through sp.Skeleton in some flows.
+                // Keep the preview path silent and non-invasive.
+                return;
+            }
             error('[sp.Skeleton] Spine 4.x data must use sp4.Skeleton component.');
             return;
         }

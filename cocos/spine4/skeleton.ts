@@ -23,7 +23,7 @@
 */
 import { EDITOR_NOT_IN_PREVIEW, JSB } from 'internal:constants';
 import { ccclass, executeInEditMode, help, menu, serializable, type, override, displayOrder, editable, visible } from 'cc.decorator';
-import { Material, Texture2D, Asset } from '../asset/assets';
+import { Material, Texture2D } from '../asset/assets';
 import { error, errorID, logID, warnID } from '../core/platform/debug';
 import { Enum, EnumType, ccenum } from '../core/value-types/enum';
 import { Node, NodeEventType } from '../scene-graph';
@@ -48,11 +48,8 @@ import { setPropertyEnumType } from '../core/internal-index';
 import { RenderData } from '../2d/renderer/render-data';
 import { SPINE_VERSION } from './lib/spine-version';
 
-function isSkeletonDataValid (skeletonData: any): boolean {
-    return !!skeletonData
-        && typeof skeletonData.isEmpty === 'function'
-        && typeof skeletonData.getRuntimeData === 'function'
-        && !skeletonData.isEmpty();
+function isSkeletonDataValid (skeletonData: SkeletonData | null): skeletonData is SkeletonData {
+    return !!skeletonData && !skeletonData.isEmpty();
 }
 
 function detectSpineVersionFromAsset (skeletonData: any): string | undefined {
@@ -548,14 +545,14 @@ export class Skeleton extends UIRenderer {
      * 骨骼数据包含了骨骼信息（绑定骨骼动作，slots，渲染顺序，
      * attachments，皮肤等等）和动画但不持有任何状态。<br/>
      * 多个 Skeleton 可以共用相同的骨骼数据。
-    * @property {sp.SkeletonData}
+    * @property {sp4.SkeletonData}
      */
     @editable
-    @type(Asset)
-    get skeletonData (): any {
+    @type(SkeletonData)
+    get skeletonData (): SkeletonData | null {
         return this._skeletonData;
     }
-    set skeletonData (value: any) {
+    set skeletonData (value: SkeletonData | null) {
         const version = detectSpineVersionFromAsset(value);
         if (version?.startsWith('3.')) {
             error('[sp4.Skeleton] Spine 3.x data must use sp.Skeleton component.');
@@ -584,8 +581,9 @@ export class Skeleton extends UIRenderer {
     @visible(true)
     @type(DefaultSkinsEnum)
     get _defaultSkinIndex (): number {
-        if (isSkeletonDataValid(this.skeletonData)) {
-            const skinsEnum = this.skeletonData.getSkinsEnum();
+        const skeletonData = this.skeletonData;
+        if (isSkeletonDataValid(skeletonData)) {
+            const skinsEnum = skeletonData.getSkinsEnum();
             if (skinsEnum) {
                 if (this.defaultSkin === '') {
                     // eslint-disable-next-line no-prototype-builtins
@@ -608,8 +606,9 @@ export class Skeleton extends UIRenderer {
      */
     set _defaultSkinIndex (value: number) {
         let skinsEnum;
-        if (isSkeletonDataValid(this.skeletonData)) {
-            skinsEnum = this.skeletonData.getSkinsEnum();
+        const skeletonData = this.skeletonData;
+        if (isSkeletonDataValid(skeletonData)) {
+            skinsEnum = skeletonData.getSkinsEnum();
         }
         if (!skinsEnum) {
             error(`${this.name} skin enums are invalid`);
@@ -635,9 +634,10 @@ export class Skeleton extends UIRenderer {
     @type(SpineDefaultAnimsEnum)
     get _animationIndex (): number {
         const animationName = EDITOR_NOT_IN_PREVIEW ? this.defaultAnimation : this.animation;
-        if (isSkeletonDataValid(this.skeletonData)) {
+        const skeletonData = this.skeletonData;
+        if (isSkeletonDataValid(skeletonData)) {
             if (animationName) {
-                const animsEnum = this.skeletonData.getAnimsEnum();
+                const animsEnum = skeletonData.getAnimsEnum();
                 if (animsEnum) {
                     const animIndex = animsEnum[animationName];
                     if (animIndex !== undefined) {
@@ -655,8 +655,9 @@ export class Skeleton extends UIRenderer {
      */
     set _animationIndex (value: number) {
         let animsEnum;
-        if (isSkeletonDataValid(this.skeletonData)) {
-            animsEnum = this.skeletonData.getAnimsEnum();
+        const skeletonData = this.skeletonData;
+        if (isSkeletonDataValid(skeletonData)) {
+            animsEnum = skeletonData.getAnimsEnum();
         }
         if (!animsEnum) {
             error(`${this.name} animation enums are invalid`);
@@ -1540,8 +1541,9 @@ export class Skeleton extends UIRenderer {
     // update animation list for editor
     protected _updateAnimEnum (): void {
         let animEnum;
-        if (isSkeletonDataValid(this.skeletonData)) {
-            animEnum = this.skeletonData.getAnimsEnum();
+        const skeletonData = this.skeletonData;
+        if (isSkeletonDataValid(skeletonData)) {
+            animEnum = skeletonData.getAnimsEnum();
         } else {
             animEnum = SpineDefaultAnimsEnum;
         }
@@ -1555,8 +1557,9 @@ export class Skeleton extends UIRenderer {
     // update skin list for editor
     protected _updateSkinEnum (): void {
         let skinEnum;
-        if (isSkeletonDataValid(this.skeletonData)) {
-            skinEnum = this.skeletonData.getSkinsEnum();
+        const skeletonData = this.skeletonData;
+        if (isSkeletonDataValid(skeletonData)) {
+            skinEnum = skeletonData.getSkinsEnum();
         } else {
             skinEnum = DefaultSkinsEnum;
         }
