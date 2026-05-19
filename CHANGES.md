@@ -77,6 +77,9 @@ Same class of updates as Spine3 counterpart:
   `updateWorldTransform()` can throw embind argument errors.
 - Matched 2.8 Spine4 layout behavior by stopping automatic anchor rewrite from skeleton bounds
   (`skeletonData.x/y`) in Spine4 UITransform sync; now Spine4 keeps the node's anchor and only updates content size.
+- Ported 2.8 Spine4 JSON runtime compatibility patch into `spine4/skeleton-data`:
+  - normalize Spine 4.x `bone.inherit` / `bone.transform` values to runtime-accepted forms
+  - normalize `skeleton.spine` tag to `4.2.00` for non-4.2 exports before Spine4 WASM parse.
 
 ### 5) `cocos/spine/assembler/simple.ts`
 Mixed-runtime rendering collision fix:
@@ -169,6 +172,7 @@ Summary:
 - Spine4 runtime node/content alignment issues where assets appeared visually offset from expected node position.
 - Spine4 editor error: `Skeleton.updateWorldTransform called with invalid number of arguments (0)` during preload/drag.
 - Spine4 render placement mismatch caused by forced anchor mutation in 3.8 Spine4 UITransform update path.
+- Spine4 bone deformation/detached parts caused by JSON compatibility mismatch with 4.2 runtime parser.
 
 ---
 

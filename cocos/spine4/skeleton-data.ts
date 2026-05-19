@@ -114,6 +114,96 @@ function detectSpineVersion (skeletonJson: spine.SkeletonJson | null, nativeAsse
     return undefined;
 }
 
+function normalizeNativeInheritMode (value: unknown): string {
+    if (typeof value !== 'string') {
+        return '';
+    }
+
+    const normalized = value.trim().toLowerCase();
+    if (!normalized) {
+        return '';
+    }
+
+    switch (normalized) {
+    case 'normal':
+        return 'normal';
+    case 'onlytranslation':
+        return 'onlyTranslation';
+    case 'norotationorreflection':
+        return 'noRotationOrReflection';
+    case 'noscale':
+        return 'noScale';
+    case 'noscaleorreflection':
+        return 'noScaleOrReflection';
+    default:
+        return '';
+    }
+}
+
+function applyNativeBoneInheritCompat (json: any, dryRun = false): boolean {
+    if (!json || !Array.isArray(json.bones) || json.bones.length === 0) {
+        return false;
+    }
+
+    let patched = false;
+    for (let i = 0; i < json.bones.length; i++) {
+        const bone = json.bones[i];
+        if (!bone || typeof bone !== 'object') {
+            continue;
+        }
+
+        const inheritValue = bone.inherit;
+        const normalizedInherit = normalizeNativeInheritMode(inheritValue);
+        if (normalizedInherit && inheritValue !== normalizedInherit) {
+            if (!dryRun) {
+                bone.inherit = normalizedInherit;
+            }
+            patched = true;
+        }
+
+        if (bone.inherit == null && typeof bone.transform === 'string') {
+            const normalizedTransform = normalizeNativeInheritMode(bone.transform);
+            if (normalizedTransform) {
+                if (!dryRun) {
+                    bone.inherit = normalizedTransform;
+                }
+                patched = true;
+            }
+        }
+    }
+
+    return patched;
+}
+
+function getRuntimeCompatibleSkeletonJsonString (skeletonJson: spine.SkeletonJson): string {
+    if (!skeletonJson) {
+        return '';
+    }
+
+    let runtimeJson: any = skeletonJson;
+    let patched = false;
+    const spineVersion = runtimeJson?.skeleton?.spine as string | undefined;
+
+    if (typeof spineVersion === 'string' && /^4\./.test(spineVersion) && !/^4\.2(\.|$)/.test(spineVersion)) {
+        runtimeJson = JSON.parse(JSON.stringify(skeletonJson));
+        if (runtimeJson.skeleton) {
+            runtimeJson.skeleton.spine = '4.2.00';
+            patched = true;
+        }
+    }
+
+    const needsBoneInheritPatch = applyNativeBoneInheritCompat(runtimeJson, true);
+    if (needsBoneInheritPatch) {
+        if (runtimeJson === skeletonJson) {
+            runtimeJson = JSON.parse(JSON.stringify(skeletonJson));
+        }
+        applyNativeBoneInheritCompat(runtimeJson, false);
+        patched = true;
+    }
+
+    return patched ? JSON.stringify(runtimeJson) : JSON.stringify(skeletonJson);
+}
+
 function getSpineWasmUtilByVersion (version?: string): SpineWasmUtilLike {
     const useSpine3 = !!version && version.startsWith('3.');
     const runtime = useSpine3 ? spine3 : spine;
@@ -495,7 +585,8 @@ export class SkeletonData extends Asset {
                 textureUUIDs.push(tex.uuid || tex.getId());
             }
             if (this._skeletonJson) {
-                this._skeletonCache = wasmUtil.createSpineSkeletonDataWithJson(this.skeletonJsonStr, this._atlasText, this.textureNames, textureUUIDs);
+                const jsonForRuntime = getRuntimeCompatibleSkeletonJsonString(this._skeletonJson);
+                this._skeletonCache = wasmUtil.createSpineSkeletonDataWithJson(jsonForRuntime, this._atlasText, this.textureNames, textureUUIDs);
                 if (this._skeletonCache) {
                     wasmUtil.registerSpineSkeletonDataWithUUID(this._skeletonCache, uuid);
                 } else {
