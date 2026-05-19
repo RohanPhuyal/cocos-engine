@@ -39,7 +39,6 @@
 #include "spine4/SkeletonData.h"
 #include "spine4/spine.h"
 
-using namespace ::spine4;
 namespace cc::spine4 {
 
 class AttachmentVertices;
@@ -51,11 +50,11 @@ public:
 
     ~SkeletonDataInfo();
 
-    SkeletonData *data = nullptr;
-    Atlas *atlas = nullptr;
-    AttachmentLoader *attachmentLoader = nullptr;
+    ::spine4::SkeletonData *data = nullptr;
+    ::spine4::Atlas *atlas = nullptr;
+    ::spine4::AttachmentLoader *attachmentLoader = nullptr;
     std::vector<int> texturesIndex;
-    std::unordered_map<Attachment *, AttachmentVertices *> attachmentVerticesMap;
+    std::unordered_map<::spine4::Attachment *, AttachmentVertices *> attachmentVerticesMap;
 };
 
 /**
@@ -81,9 +80,9 @@ public:
     ~SkeletonDataMgr();
 
     bool hasSkeletonData(const std::string &uuid);
-    void setSkeletonData(const std::string &uuid, SkeletonData *data, Atlas *atlas, AttachmentLoader *attachmentLoader, const std::vector<int> &texturesIndex);
+    void setSkeletonData(const std::string &uuid, ::spine4::SkeletonData *data, ::spine4::Atlas *atlas, ::spine4::AttachmentLoader *attachmentLoader, const std::vector<int> &texturesIndex);
     // equal to 'findByUUID'
-    SkeletonData *retainByUUID(const std::string &uuid);
+    ::spine4::SkeletonData *retainByUUID(const std::string &uuid);
     // equal to 'deleteByUUID'
     void releaseByUUID(const std::string &uuid);
 

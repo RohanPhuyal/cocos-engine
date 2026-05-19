@@ -33,12 +33,11 @@
 #include "SkeletonDataMgr.h"
 
 USING_NS_MW;        // NOLINT(google-build-using-namespace)
-using namespace cc; // NOLINT(google-build-using-namespace)
-using namespace ::spine4;
 
 extern "C" cc::spine4::AttachmentVertices *generateAttachmentVerticesSpine4(::spine4::Attachment *attachment);
 
 namespace cc::spine4 {
+using namespace ::spine4;
 
 float SkeletonCache::FrameTime = 1.0F / 60.0F;
 float SkeletonCache::MaxCacheTime = 120.0F;

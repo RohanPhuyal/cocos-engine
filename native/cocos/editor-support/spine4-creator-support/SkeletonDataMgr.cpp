@@ -33,14 +33,12 @@
 #include "AttachmentVertices.h"
 
 using namespace spine4; //NOLINT
-using namespace cc; //NOLINT
-using namespace cc::spine4; //NOLINT
 
 
 static uint16_t quadTriangles[6] = {0, 1, 2, 2, 3, 0};
 
-extern "C" AttachmentVertices *generateAttachmentVerticesSpine4(Attachment *attachment) {
-    AttachmentVertices *attachmentVertices = nullptr;
+extern "C" cc::spine4::AttachmentVertices *generateAttachmentVerticesSpine4(Attachment *attachment) {
+    cc::spine4::AttachmentVertices *attachmentVertices = nullptr;
     if (attachment->getRTTI().isExactly(RegionAttachment::rtti)) {
         auto *regionAttachMent = static_cast<RegionAttachment *>(attachment);
 #if 0
@@ -49,7 +47,7 @@ extern "C" AttachmentVertices *generateAttachmentVerticesSpine4(Attachment *atta
 #else
         auto *region = static_cast<AtlasRegion *>(regionAttachMent->getRegion());
         if (!region) return nullptr;
-        attachmentVertices = new AttachmentVertices(static_cast<middleware::Texture2D *>(region->page->texture), 4, quadTriangles, 6);
+        attachmentVertices = new cc::spine4::AttachmentVertices(static_cast<cc::middleware::Texture2D *>(region->page->texture), 4, quadTriangles, 6);
 #endif
         auto *vertices = attachmentVertices->_triangles->verts;
         for (int i = 0, ii = 0; i < 4; ++i, ii += 2) {
@@ -65,7 +63,7 @@ extern "C" AttachmentVertices *generateAttachmentVerticesSpine4(Attachment *atta
 #else
         auto *region = static_cast<AtlasRegion *>(meshAttachMent->getRegion());
         if (!region) return nullptr;
-        attachmentVertices = new AttachmentVertices(static_cast<middleware::Texture2D *>(region->page->texture),
+        attachmentVertices = new cc::spine4::AttachmentVertices(static_cast<cc::middleware::Texture2D *>(region->page->texture),
                                                     static_cast<int32_t>(meshAttachMent->getWorldVerticesLength() >> 1), meshAttachMent->getTriangles().buffer(), static_cast<int32_t>(meshAttachMent->getTriangles().size()));
 #endif
         auto *vertices = attachmentVertices->_triangles->verts;
@@ -118,8 +116,6 @@ void saveAttachmentVertices(SkeletonDataInfo *info) {
         }
     }
 }
-
-} // namespace cc::spine4
 
 SkeletonDataMgr *SkeletonDataMgr::instance = nullptr;
 
@@ -190,3 +186,5 @@ void SkeletonDataMgr::releaseByUUID(const std::string &uuid) {
     }
     delete info;
 }
+
+} // namespace cc::spine4

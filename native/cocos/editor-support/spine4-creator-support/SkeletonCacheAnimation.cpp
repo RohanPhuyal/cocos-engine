@@ -41,9 +41,7 @@
 
 USING_NS_MW; // NOLINT(google-build-using-namespace)
 
-using namespace cc;      // NOLINT(google-build-using-namespace)
 using namespace cc::gfx; // NOLINT(google-build-using-namespace)
-using namespace ::spine4;
 static const std::string TECH_STAGE = "opaque";
 static const std::string TEXTURE_KEY = "texture";
 
@@ -279,15 +277,15 @@ void SkeletonCacheAnimation::render(float /*dt*/) {
 
         blendMode = segment->blendMode;
         switch (blendMode) {
-            case BlendMode_Additive:
+            case ::spine4::BlendMode_Additive:
                 curBlendSrc = static_cast<int>(_premultipliedAlpha ? BlendFactor::ONE : BlendFactor::SRC_ALPHA);
                 curBlendDst = static_cast<int>(BlendFactor::ONE);
                 break;
-            case BlendMode_Multiply:
+            case ::spine4::BlendMode_Multiply:
                 curBlendSrc = static_cast<int>(BlendFactor::DST_COLOR);
                 curBlendDst = static_cast<int>(BlendFactor::ONE_MINUS_SRC_ALPHA);
                 break;
-            case BlendMode_Screen:
+            case ::spine4::BlendMode_Screen:
                 curBlendSrc = static_cast<int>(_premultipliedAlpha ? BlendFactor::ONE : BlendFactor::SRC_ALPHA);
                 curBlendDst = static_cast<int>(BlendFactor::ONE_MINUS_SRC_COLOR);
                 break;

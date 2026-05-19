@@ -42,25 +42,25 @@ typedef cc::middleware::Texture2D *(*CustomTextureLoader)(const char *path);
 // set custom texture loader for _spAtlasPage_createTexture
 void spAtlasPage_setCustomTextureLoader(CustomTextureLoader texLoader);
 
-class Cocos2dAtlasAttachmentLoader : public AtlasAttachmentLoader {
+class Cocos2dAtlasAttachmentLoader : public ::spine4::AtlasAttachmentLoader {
 public:
-    Cocos2dAtlasAttachmentLoader(Atlas *atlas);
+    Cocos2dAtlasAttachmentLoader(::spine4::Atlas *atlas);
     virtual ~Cocos2dAtlasAttachmentLoader();
-    virtual void configureAttachment(Attachment *attachment);
+    virtual void configureAttachment(::spine4::Attachment *attachment);
 };
 
-class Cocos2dTextureLoader : public TextureLoader {
+class Cocos2dTextureLoader : public ::spine4::TextureLoader {
 public:
     Cocos2dTextureLoader();
 
     virtual ~Cocos2dTextureLoader();
 
-    virtual void load(AtlasPage &page, const String &path);
+    virtual void load(::spine4::AtlasPage &page, const ::spine4::String &path);
 
     virtual void unload(void *texture);
 };
 
-class Cocos2dExtension : public DefaultSpineExtension {
+class Cocos2dExtension : public ::spine4::DefaultSpineExtension {
 public:
     Cocos2dExtension();
 
@@ -69,7 +69,7 @@ public:
     virtual void _free(void *mem, const char *file, int line);
 
 protected:
-    virtual char *_readFile(const String &path, int *length);
+    virtual char *_readFile(const ::spine4::String &path, int *length);
 };
 
 typedef void (*SpineObjectDisposeCallback)(void *);

@@ -46,7 +46,6 @@ void setSpineObjectDisposeCallback(SpineObjectDisposeCallback callback) {
 } // namespace cc::spine4
 
 USING_NS_MW;           // NOLINT(google-build-using-namespace)
-using namespace cc;    // NOLINT(google-build-using-namespace)
 using namespace cc::spine4; // NOLINT(google-build-using-namespace)
 using namespace ::spine4; // NOLINT(google-build-using-namespace)
 

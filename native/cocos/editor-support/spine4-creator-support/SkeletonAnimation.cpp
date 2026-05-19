@@ -35,6 +35,7 @@
 #include "spine4/Extension.h"
 
 namespace cc::spine4 {
+using namespace ::spine4;
 
 struct TrackEntryListeners {
     StartListener startListener;

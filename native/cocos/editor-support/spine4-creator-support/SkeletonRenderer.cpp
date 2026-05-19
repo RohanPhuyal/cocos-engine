@@ -47,7 +47,6 @@
 
 USING_NS_MW;             // NOLINT(google-build-using-namespace)
 using namespace ::spine4; // NOLINT(google-build-using-namespace)
-using namespace cc;      // NOLINT(google-build-using-namespace)
 using namespace cc::gfx; // NOLINT(google-build-using-namespace)
 
 using std::max;
