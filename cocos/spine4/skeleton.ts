@@ -442,6 +442,8 @@ export class Skeleton extends UIRenderer {
     protected _enableBatch = false;
     @serializable
     protected _premultiplyTextureInShader = false;
+    @serializable
+    protected _calculateIndividualBlending = true;
 
     protected _runtimeData: spine.SkeletonData | null = null;
     public _skeleton: spine.Skeleton = null!;
@@ -761,6 +763,16 @@ export class Skeleton extends UIRenderer {
         if (value !== this._enableBatch) {
             this._enableBatch = value;
             this._updateBatch();
+        }
+    }
+
+    @editable
+    get calculateIndividualBlending (): boolean { return this._calculateIndividualBlending; }
+    set calculateIndividualBlending (value: boolean) {
+        if (value !== this._calculateIndividualBlending) {
+            this._calculateIndividualBlending = value;
+            this._cleanMaterialCache();
+            this._markForUpdateRenderData();
         }
     }
     /**

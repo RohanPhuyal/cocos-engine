@@ -70,9 +70,11 @@ const DEBUG_TYPE_MESH = 1;
 const tempVecPos = new Vec3(0, 0, 0);
 
 function _getSlotMaterial (blendMode: number, comp: Skeleton): MaterialInstance {
+    const useIndividualBlending = (comp as any).calculateIndividualBlending !== false;
+    const resolvedBlendMode = useIndividualBlending ? blendMode : 0;
     let src: BlendFactor;
     let dst: BlendFactor;
-    switch (blendMode) {
+    switch (resolvedBlendMode) {
     case 1:
         src =  _premultipliedAlpha ? BlendFactor.ONE :  BlendFactor.SRC_ALPHA;
         dst = BlendFactor.ONE;
