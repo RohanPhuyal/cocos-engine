@@ -204,6 +204,14 @@ function ensureTexturesPremultiplied (skeletonData: any, useShaderFallback?: { v
 }
 
 function resolvePremultipliedAlpha (current: boolean, skeletonData: any, runtimeData: any, useShaderFallback?: { value: boolean }): boolean {
+    // Keep inspector value as the source of truth.
+    // We only compute shader fallback/texture preparation when PMA is enabled.
+    if (!current) {
+        if (useShaderFallback) {
+            useShaderFallback.value = false;
+        }
+        return false;
+    }
     if (hasAtlasPmaFlag(skeletonData)) {
         if (useShaderFallback) {
             useShaderFallback.value = false;
@@ -211,12 +219,13 @@ function resolvePremultipliedAlpha (current: boolean, skeletonData: any, runtime
         return true;
     }
     if (hasScreenBlendMode(runtimeData) || hasScreenBlendModeInSkeletonJson(skeletonData)) {
-        return ensureTexturesPremultiplied(skeletonData, useShaderFallback);
+        ensureTexturesPremultiplied(skeletonData, useShaderFallback);
+        return true;
     }
     if (useShaderFallback) {
         useShaderFallback.value = false;
     }
-    return false;
+    return true;
 }
 
 function createRuntimeSkeletonInstance (): spine.SkeletonInstance | null {
